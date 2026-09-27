@@ -7,7 +7,7 @@
 // Runtime screen, the Local models screen, and the runtime-missing banners
 // elsewhere in Settings do not each re-guess it.
 
-export type SlotId = 'gguf' | 'mlx' | 'decision' | 'ocr' | 'asr' | 'tts';
+export type SlotId = 'gguf' | 'mlx' | 'gturbo' | 'decision' | 'ocr' | 'asr' | 'tts';
 export type SlotKind = 'format' | 'capability';
 export type RuntimeType = 'llm-engine' | 'decision' | 'ocr' | 'asr' | 'tts';
 export type RuntimeMode = 'service' | 'model';
@@ -139,7 +139,7 @@ export interface InstallJob {
 
 // ---- Local models (§5.3) ----
 
-export type LocalModelFormat = 'gguf' | 'mlx';
+export type LocalModelFormat = 'gguf' | 'mlx' | 'gturbo';
 
 export interface LocalModelRuntimeRef {
   slot: SlotId;
