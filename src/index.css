@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Desktop app (Tauri) — make it feel native rather than like a web page. */
+.desktop-app,
+.desktop-app * {
+  /* Kill the macOS rubber-band / overscroll bounce on every scroll area. */
+  overscroll-behavior: none;
+}
+
+.desktop-app,
+.desktop-app body {
+  /* No page-level scroll bounce or accidental rubber-banding. */
+  overflow: hidden;
+}
+
+/* Compact chat popover (menu-bar): hide scrollbars entirely for a clean,
+   native popover look — content still scrolls via wheel/trackpad. */
+.embed-mode ::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+.embed-mode * {
+  scrollbar-width: none;
+}
+
+/* Don't let UI chrome (sidebar, buttons, labels) be selected like a web page,
+   but keep text content and inputs fully selectable for copying. */
+.desktop-app {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.desktop-app input,
+.desktop-app textarea,
+.desktop-app [contenteditable="true"],
+.desktop-app .prose,
+.desktop-app .prose *,
+.desktop-app code,
+.desktop-app pre,
+.desktop-app p,
+.desktop-app span,
+.desktop-app td,
+.desktop-app th,
+.desktop-app li {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Highlight.js Theme Overrides */
+pre code.hljs {
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.prose pre {
+  margin: 0.65rem 0;
+  border-radius: 8px;
+}
+
+.chat-markdown {
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown .chat-markdown-pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(15, 23, 42, 0.06) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.dark .chat-markdown .chat-markdown-pre {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.chat-markdown :not(pre) > code {
+  color: inherit;
+  background-color: rgba(15, 23, 42, 0.08);
+  padding: 0.12em 0.36em;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 0.9em;
+  white-space: break-spaces;
+}
+
+.dark .chat-markdown :not(pre) > code {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.chat-markdown pre > code {
+  display: block;
+  min-width: max-content;
+  padding: 0.75rem 0.9rem !important;
+  color: #334155;
+  background: transparent !important;
+  border: 0;
+  border-radius: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.chat-markdown pre > code *,
+.chat-markdown pre code.hljs {
+  color: #334155 !important;
+}
+
+.dark .chat-markdown pre > code,
+.dark .chat-markdown pre > code *,
+.dark .chat-markdown pre code.hljs {
+  color: #f8fafc !important;
+}
+
+.prose {
+  max-width: none;
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.6;
+  color: inherit;
+}
+
+.prose p {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+.prose p:first-child {
+  margin-top: 0;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+  padding-left: 1.25em;
+}
+
+.prose li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+.prose table {
+  margin: 0.8em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.prose th,
+.prose td {
+  padding: 0.5em 0.75em;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.dark .prose th,
+.dark .prose td {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.prose th {
+  background-color: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.dark .prose th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
