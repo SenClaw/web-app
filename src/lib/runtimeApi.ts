@@ -7,9 +7,9 @@
 // Runtime screen, the Local models screen, and the runtime-missing banners
 // elsewhere in Settings do not each re-guess it.
 
-export type SlotId = 'gguf' | 'mlx' | 'gturbo' | 'decision' | 'ocr' | 'asr' | 'tts';
+export type SlotId = 'gguf' | 'mlx' | 'gturbo' | 'decision' | 'ocr' | 'asr' | 'tts' | 'browser';
 export type SlotKind = 'format' | 'capability';
-export type RuntimeType = 'llm-engine' | 'decision' | 'ocr' | 'asr' | 'tts';
+export type RuntimeType = 'llm-engine' | 'decision' | 'ocr' | 'asr' | 'tts' | 'browser';
 export type RuntimeMode = 'service' | 'model';
 export type RuntimeSource = 'index' | 'local' | 'bundled';
 export type ProcessState = 'starting' | 'ready' | 'stopping' | 'failed';

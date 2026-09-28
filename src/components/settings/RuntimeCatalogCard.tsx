@@ -12,6 +12,7 @@ import {
   SearchOutlined,
   SoundOutlined,
   ThunderboltOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { useLang } from '../../i18n';
 import type {
@@ -32,6 +33,7 @@ const TYPE_ICON: Record<RuntimeType, React.ReactNode> = {
   ocr: <ScanOutlined />,
   asr: <AudioOutlined />,
   tts: <SoundOutlined />,
+  browser: <GlobalOutlined />,
 };
 
 const ACTIVE_JOB_STATES = new Set<InstallJob['state']>(['queued', 'downloading', 'verifying', 'extracting']);
@@ -184,6 +186,7 @@ export const RuntimeCatalogCard: React.FC<Props> = ({
             { value: 'ocr', label: t('OCR') },
             { value: 'asr', label: t('Speech to text') },
             { value: 'tts', label: t('Text to speech') },
+            { value: 'browser', label: t('Browser') },
           ]}
         />
       </Space>

@@ -22,6 +22,7 @@ import {
   CodeOutlined,
   DeploymentUnitOutlined,
   HddOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { useAppContext } from '../contexts/AppContext';
 import { AppLayout } from '../components/AppLayout';
@@ -40,6 +41,7 @@ import { WhisperSettings } from '../components/settings/WhisperSettings';
 import { TtsSettings } from '../components/settings/TtsSettings';
 import { OcrSettings } from '../components/settings/OcrSettings';
 import { DecisionSettings } from '../components/settings/DecisionSettings';
+import { BrowserSettings } from '../components/settings/BrowserSettings';
 import { UserProfileSettings } from '../components/settings/UserProfileSettings';
 import { RuntimeSettings } from '../components/settings/RuntimeSettings';
 import { LocalModelsSettings } from '../components/settings/LocalModelsSettings';
@@ -64,12 +66,13 @@ type SettingsSection =
   | 'tts'
   | 'ocr'
   | 'decision'
+  | 'browser'
   | 'cognitive'
   | 'agent-behavior';
 
 const SECTIONS = new Set<SettingsSection>([
   'general', 'user-profile', 'tool-rules', 'channels', 'agents', 'llm', 'provider-signin',
-  'embedding', 'lsp', 'runtime', 'local-models', 'whisper', 'tts', 'ocr', 'decision',
+  'embedding', 'lsp', 'runtime', 'local-models', 'whisper', 'tts', 'ocr', 'decision', 'browser',
   'cognitive', 'agent-behavior',
 ]);
 
@@ -120,6 +123,7 @@ export const SettingsPage: React.FC = () => {
       { key: 'tts', icon: <SoundOutlined />, label: t('Text-to-Speech') },
       { key: 'ocr', icon: <ScanOutlined />, label: t('OCR') },
       { key: 'decision', icon: <BranchesOutlined />, label: t('Decision (Laya)') },
+      { key: 'browser', icon: <GlobalOutlined />, label: t('Browser') },
       { key: 'cognitive', icon: <ExperimentOutlined />, label: t('Cognitive') },
     ],
     [t]
@@ -185,6 +189,8 @@ export const SettingsPage: React.FC = () => {
         return <OcrSettings onOpenRuntimeSettings={() => setActiveSection('runtime')} />;
       case 'decision':
         return <DecisionSettings onOpenRuntimeSettings={() => setActiveSection('runtime')} />;
+      case 'browser':
+        return <BrowserSettings onOpenRuntimeSettings={() => setActiveSection('runtime')} />;
       case 'cognitive':
         return <CognitiveSettings />;
       case 'agent-behavior':

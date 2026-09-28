@@ -69,6 +69,14 @@ sibling checkout). This client speaks to it through:
   from scratch**, or a field this UI does not know about (added by a runtime
   or a future field) is silently dropped on save.
 
+- **Settings → Browser** (`BrowserSettings.tsx` + `src/lib/browserAgentApi.ts`)
+  — the browser engine (`/api/browser-agent/*`, `senclaw` repo
+  `src/browser_agent/rest.rs`): engine in use, settings saved as a partial
+  `PUT` (only changed fields; a 422 carries a sentence for the person, shown
+  as is), the Chrome extension's pairing (polled every 3 s while open — the
+  call never starts a runtime), and open tabs **on request only**, because
+  `GET /api/browser-agent/tabs` starts the browser runtime.
+
 **Runtime-missing is an expected, actionable state, not a generic error.**
 When the daemon answers a proxied route with `503` and one of
 `runtime_not_installed` / `runtime_not_selected` / `runtime_start_failed`
