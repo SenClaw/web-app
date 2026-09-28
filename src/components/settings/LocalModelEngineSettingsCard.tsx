@@ -10,6 +10,18 @@ function numOrUndef(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+/** TurboQuant KV (`kv_cache_bits`): the engine remaps a legacy `2` to TQ3; `0`, unset or anything else is off (FP16 KV). */
+function turboQuantBits(v: unknown): number | undefined {
+  if (v === 2 || v === 3) return 3;
+  if (v === 4) return 4;
+  return undefined;
+}
+
+/** KV packed on Metal (`mlx_kv_cache_bits`): `4` or `8`; anything else is FP16. */
+function metalKvBits(v: unknown): number | undefined {
+  return v === 4 || v === 8 ? v : undefined;
+}
+
 /** §5.3: an unset `defaultContextLength` falls back to 32768 daemon-side — mirrored here so the field always shows a concrete, editable number instead of a blank one that looks broken. */
 const DEFAULT_CONTEXT_LENGTH = 32768;
 
@@ -35,6 +47,10 @@ export const LocalModelEngineSettingsCard: React.FC<Props> = ({ settings, onSave
   const [enableThinking, setEnableThinking] = useState<boolean | undefined>(
     typeof settings.engine.enable_thinking === 'boolean' ? settings.engine.enable_thinking : undefined
   );
+  const [kvCacheBits, setKvCacheBits] = useState<number | undefined>(turboQuantBits(settings.engine.kv_cache_bits));
+  const [mlxKvCacheBits, setMlxKvCacheBits] = useState<number | undefined>(
+    metalKvBits(settings.engine.mlx_kv_cache_bits)
+  );
   const [saving, setSaving] = useState(false);
 
   const setKey = (engine: Record<string, unknown>, key: string, value: number | boolean | undefined) => {
@@ -52,6 +68,8 @@ export const LocalModelEngineSettingsCard: React.FC<Props> = ({ settings, onSave
       setKey(engine, 'max_new_tokens', maxNewTokens);
       setKey(engine, 'max_kv_tokens', maxKvTokens);
       setKey(engine, 'enable_thinking', enableThinking);
+      setKey(engine, 'kv_cache_bits', kvCacheBits);
+      setKey(engine, 'mlx_kv_cache_bits', mlxKvCacheBits);
       await onSave({ defaultContextLength: ctx, engine });
       message.success(t('Settings saved successfully'));
     } catch (e: any) {
@@ -161,6 +179,42 @@ export const LocalModelEngineSettingsCard: React.FC<Props> = ({ settings, onSave
             value={maxKvTokens}
             onChange={(v) => setMaxKvTokens(v ?? undefined)}
           />
+        </Col>
+        <Col xs={24} md={12}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+            {t('TurboQuant KV')}
+          </Text>
+          <Select
+            style={{ width: '100%' }}
+            value={kvCacheBits ?? 0}
+            onChange={(v) => setKvCacheBits(v === 0 ? undefined : v)}
+            options={[
+              { value: 0, label: t('Off (FP16)') },
+              { value: 3, label: 'TQ3 — 3-bit' },
+              { value: 4, label: 'TQ4 — 4-bit' },
+            ]}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('Compresses the KV cache on long contexts. MLX.')}
+          </Text>
+        </Col>
+        <Col xs={24} md={12}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+            {t('KV packed on Metal')}
+          </Text>
+          <Select
+            style={{ width: '100%' }}
+            value={mlxKvCacheBits ?? 0}
+            onChange={(v) => setMlxKvCacheBits(v === 0 ? undefined : v)}
+            options={[
+              { value: 0, label: 'FP16' },
+              { value: 4, label: '4-bit' },
+              { value: 8, label: '8-bit' },
+            ]}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('mlx.core.quantize — saves RAM, MLX only.')}
+          </Text>
         </Col>
       </Row>
     </Card>
