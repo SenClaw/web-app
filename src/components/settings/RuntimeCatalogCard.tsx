@@ -248,6 +248,12 @@ export const RuntimeCatalogCard: React.FC<Props> = ({
                         {t(job.state)}
                       </Text>
                     </Space>
+                  ) : entry.installedVersion && (!entry.available || !entry.latestVersion) ? (
+                    <Tooltip title={t('Installed from a local package; no release is published for this platform/channel yet.')}>
+                      <Tag color="success" icon={<CheckCircleOutlined />}>
+                        {t('Installed')}
+                      </Tag>
+                    </Tooltip>
                   ) : !entry.available || !entry.latestVersion ? (
                     <Tooltip title={t('Listed but no package has been published for this platform/channel yet.')}>
                       <Tag>{t('Not published yet')}</Tag>

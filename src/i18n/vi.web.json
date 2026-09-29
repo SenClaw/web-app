@@ -240,5 +240,6 @@
   "Click": "Nhấp",
   "Press Enter": "Nhấn Enter",
   "Confirm a dialog": "Xác nhận hộp thoại",
-  "Type text": "Nhập chữ"
+  "Type text": "Nhập chữ",
+  "Installed from a local package; no release is published for this platform/channel yet.": "Đã cài từ gói cục bộ; chưa có bản phát hành cho nền tảng/kênh này."
 }
