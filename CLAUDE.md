@@ -74,7 +74,10 @@ sibling checkout). This client speaks to it through:
   `src/browser_agent/rest.rs`): engine in use, settings saved as a partial
   `PUT` (only changed fields; a 422 carries a sentence for the person, shown
   as is), the Chrome extension's pairing (polled every 3 s while open — the
-  call never starts a runtime), and open tabs **on request only**, because
+  call never starts a runtime), actions a browser task paused on for the
+  person (`GET /api/browser-agent/approvals`, polled every 5 s; Approve /
+  Decline POST to `/approvals/:id`, which runs the rest of the task inside the
+  call, so no client timeout), and open tabs **on request only**, because
   `GET /api/browser-agent/tabs` starts the browser runtime.
 
 **Runtime-missing is an expected, actionable state, not a generic error.**

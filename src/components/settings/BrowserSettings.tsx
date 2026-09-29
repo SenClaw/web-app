@@ -17,7 +17,14 @@ import {
   Typography,
   message,
 } from 'antd';
-import { ChromeOutlined, DeleteOutlined, GlobalOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  ChromeOutlined,
+  DeleteOutlined,
+  GlobalOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+} from '@ant-design/icons';
 import { useLang } from '../../i18n';
 import { apiGet } from '../../lib/runtimeApi';
 import {
@@ -29,6 +36,7 @@ import {
   type BrowserSettingsView,
   type ConfidenceBands,
   type ExtensionStatus,
+  type PendingApproval,
 } from '../../lib/browserAgentApi';
 
 const { Text, Paragraph } = Typography;
@@ -142,6 +150,8 @@ export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> =
           />
         )}
       </Card>
+
+      <ApprovalsCard />
 
       <Card
         size="small"
@@ -454,6 +464,129 @@ const ExtensionCard: React.FC = () => {
         {t(
           'Install the SenClaw extension in Chrome and open its side panel; its pairing code appears here — or send `pair approve <CODE>` in any chat.'
         )}
+      </Text>
+    </Card>
+  );
+};
+
+/** How the person would name the operation a task paused on; anything else shows as is. */
+const OPERATION_LABELS: Record<string, string> = {
+  CLICK: 'Click',
+  KEY_ENTER: 'Press Enter',
+  DIALOG_ACCEPT: 'Confirm a dialog',
+  TYPE_TEXT: 'Type text',
+};
+
+/** 45s, 3m, 1h 5m. */
+const formatWaiting = (secs: number): string => {
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  const m = Math.floor((secs % 3600) / 60);
+  return `${Math.floor(secs / 3600)}h${m ? ` ${m}m` : ''}`;
+};
+
+/** Statuses in which a task is paused again rather than finished. */
+const PAUSED = ['needs_approval', 'needs_user', 'needs_input'];
+
+/**
+ * Actions a browser task paused on — a purchase, a send, a confirm dialog —
+ * waiting for the person. Above the form because it is the one thing here
+ * that needs them now; polled while the section is open (it reads the
+ * daemon's memory and starts nothing). An agent in a session that asks
+ * nobody cannot approve these itself, so this is where they wait.
+ */
+const ApprovalsCard: React.FC = () => {
+  const { t, tArgs } = useLang();
+  const [items, setItems] = useState<PendingApproval[]>([]);
+  const [answering, setAnswering] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setItems((await browserAgentApi.approvals()).approvals ?? []);
+    } catch {
+      setItems([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // The task continues inside this call, possibly for minutes.
+  const answer = async (a: PendingApproval, approve: boolean) => {
+    setAnswering(a.approval_id);
+    try {
+      const out = await browserAgentApi.answerApproval(a.approval_id, approve);
+      if (!approve && !PAUSED.includes(out.status)) {
+        message.info(t('Declined'));
+      } else {
+        message.success(tArgs('The task went on: {status} — {message}', { status: out.status, message: out.message }));
+      }
+    } catch (e: any) {
+      // A 404 means someone answered it elsewhere first.
+      message.error(e?.message ?? String(e));
+    } finally {
+      setAnswering(null);
+      load();
+    }
+  };
+
+  if (items.length === 0) return null;
+
+  return (
+    <Card
+      size="small"
+      title={<Space><SafetyCertificateOutlined />{t('Waiting for your approval')}</Space>}
+      extra={<Button size="small" icon={<ReloadOutlined />} onClick={load} />}
+    >
+      {items.map((a) => {
+        const busy = answering === a.approval_id;
+        return (
+          <div key={a.approval_id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(128,128,128,0.15)' }}>
+            <Flex align="center" gap={8} wrap>
+              <Tag color="orange">{OPERATION_LABELS[a.operation] ? t(OPERATION_LABELS[a.operation]) : a.operation}</Tag>
+              <Text strong>{a.action || '—'}</Text>
+              {a.text && <Text code>{a.text}</Text>}
+            </Flex>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+              {t('Goal')}: {a.goal}
+            </Text>
+            {a.url && (
+              <Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12, maxWidth: 560 }}>
+                {a.url}
+              </Text>
+            )}
+            <Flex align="center" gap={12} style={{ marginTop: 6 }} wrap>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {t('Chat')}: <Text code>{a.chat}</Text>
+              </Text>
+              {a.waiting_secs != null && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {tArgs('Waiting {time}', { time: formatWaiting(a.waiting_secs) })}
+                </Text>
+              )}
+              <Tag>{a.driver === 'extension' ? t('Your Chrome (extension)') : t("SenClaw's own Chrome")}</Tag>
+              {busy && <Spin size="small" />}
+              <Popconfirm
+                title={t('SenClaw will do this in the browser now.')}
+                onConfirm={() => answer(a, true)}
+                disabled={answering !== null}
+              >
+                <Button type="primary" size="small" disabled={answering !== null}>
+                  {t('Approve')}
+                </Button>
+              </Popconfirm>
+              <Button size="small" disabled={answering !== null} onClick={() => answer(a, false)}>
+                {t('Decline')}
+              </Button>
+            </Flex>
+          </div>
+        );
+      })}
+      <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+        {t('A browser task paused before this action. Approve only if you want SenClaw to do it.')}
       </Text>
     </Card>
   );

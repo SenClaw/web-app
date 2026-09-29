@@ -59,6 +59,31 @@ export interface BrowserTab {
   closed: boolean;
 }
 
+/** An action a browser task paused on, waiting for the person. */
+export interface PendingApproval {
+  approval_id: string;
+  task_id: string;
+  /** The chat whose agent started the task. */
+  chat: string;
+  goal: string;
+  /** The control's label, as the page shows it. */
+  action: string;
+  /** `CLICK`, `KEY_ENTER`, `DIALOG_ACCEPT`, `TYPE_TEXT`, … */
+  operation: string;
+  text: string | null;
+  driver: BrowserDriver;
+  url: string | null;
+  waiting_secs: number | null;
+}
+
+/** What a task did once answered: it went on until it paused or ended again. */
+export interface TaskOutcome {
+  task_id: string;
+  /** `done`, `unverified`, `blocked`, `needs_approval`, `needs_user`, `needs_input`, `budget`, `cancelled`, `error`. */
+  status: string;
+  message: string;
+}
+
 export interface BrowserSession {
   id: string;
   driver: BrowserDriver;
@@ -78,6 +103,11 @@ export const browserAgentApi = {
     apiDelete<{ revoked: boolean }>(`/api/browser-agent/extension/paired/${encodeURIComponent(extId)}`),
   /** Starts the browser runtime if it is not running: call on request, never on a timer. */
   tabs: () => apiGet<{ sessions: BrowserSession[] | null }>('/api/browser-agent/tabs'),
+  /** Reads the daemon's memory only; safe to poll. */
+  approvals: () => apiGet<{ approvals: PendingApproval[] }>('/api/browser-agent/approvals'),
+  /** The task continues inside this call, so it can take minutes. 404: already answered elsewhere. */
+  answerApproval: (id: string, approve: boolean) =>
+    apiPost<TaskOutcome>(`/api/browser-agent/approvals/${encodeURIComponent(id)}`, { approve }),
 };
 
 /** The fields of `next` that differ from `saved` — what a Save sends. */
