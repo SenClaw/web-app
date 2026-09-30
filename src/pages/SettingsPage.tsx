@@ -190,7 +190,12 @@ export const SettingsPage: React.FC = () => {
       case 'decision':
         return <DecisionSettings onOpenRuntimeSettings={() => setActiveSection('runtime')} />;
       case 'browser':
-        return <BrowserSettings onOpenRuntimeSettings={() => setActiveSection('runtime')} />;
+        return (
+          <BrowserSettings
+            onOpenRuntimeSettings={() => setActiveSection('runtime')}
+            onOpenDecisionSettings={() => setActiveSection('decision')}
+          />
+        );
       case 'cognitive':
         return <CognitiveSettings />;
       case 'agent-behavior':

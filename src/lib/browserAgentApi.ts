@@ -42,6 +42,11 @@ export interface BrowserSettingsView {
   /** What `engine: auto` resolves to right now. */
   engine: 'v2' | 'legacy';
   runtimeInstalled: boolean;
+  /**
+   * The loop's local decision checkpoint. Without it every step falls to the
+   * chat model — seconds per step. Absent from a daemon that predates the field.
+   */
+  decisionModel?: { id: string; needed: boolean; installed: boolean };
 }
 
 export interface ExtensionStatus {

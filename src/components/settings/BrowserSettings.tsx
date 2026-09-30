@@ -65,7 +65,10 @@ const Field: React.FC<{ label: string; help?: string; children: React.ReactNode 
  * applies to chats started afterwards — the help text says so rather than
  * implying the open chat switched.
  */
-export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> = ({ onOpenRuntimeSettings }) => {
+export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void; onOpenDecisionSettings?: () => void }> = ({
+  onOpenRuntimeSettings,
+  onOpenDecisionSettings,
+}) => {
   const { t } = useLang();
   const [view, setView] = useState<BrowserSettingsView | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
@@ -144,6 +147,22 @@ export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> =
               onOpenRuntimeSettings && (
                 <Button size="small" type="primary" onClick={onOpenRuntimeSettings}>
                   {t('Open Runtime settings')}
+                </Button>
+              )
+            }
+          />
+        )}
+        {view.engine === 'v2' && view.decisionModel?.needed && !view.decisionModel.installed && (
+          <Alert
+            style={{ marginTop: 12 }}
+            type="warning"
+            showIcon
+            message={`${t('The decision model is not installed:')} ${view.decisionModel.id}`}
+            description={t('Every browser step is then chosen by the chat model: seconds per step instead of a fraction of one.')}
+            action={
+              onOpenDecisionSettings && (
+                <Button size="small" type="primary" onClick={onOpenDecisionSettings}>
+                  {t('Open Decision settings')}
                 </Button>
               )
             }
