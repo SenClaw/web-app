@@ -78,7 +78,12 @@ sibling checkout). This client speaks to it through:
   person (`GET /api/browser-agent/approvals`, polled every 5 s; Approve /
   Decline POST to `/approvals/:id`, which runs the rest of the task inside the
   call, so no client timeout), and open tabs **on request only**, because
-  `GET /api/browser-agent/tabs` starts the browser runtime.
+  `GET /api/browser-agent/tabs` starts the browser runtime. When the engine's
+  decision checkpoint is missing (`decisionModel.installed: false`), the
+  warning downloads it in place if the decision runtime's catalog lists it
+  (`POST /api/decision/models/:id/download`, progress polled from
+  `/api/decision/models` only while the job runs) and otherwise links to
+  Settings → Decision; a runtime-missing 503 links to Settings → Runtime.
 
 **Runtime-missing is an expected, actionable state, not a generic error.**
 When the daemon answers a proxied route with `503` and one of

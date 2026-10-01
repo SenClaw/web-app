@@ -248,5 +248,11 @@
   "Press Enter": "Nhấn Enter",
   "Confirm a dialog": "Xác nhận hộp thoại",
   "Type text": "Nhập chữ",
-  "Installed from a local package; no release is published for this platform/channel yet.": "Đã cài từ gói cục bộ; chưa có bản phát hành cho nền tảng/kênh này."
+  "Installed from a local package; no release is published for this platform/channel yet.": "Đã cài từ gói cục bộ; chưa có bản phát hành cho nền tảng/kênh này.",
+  "Download ({size})": "Tải về ({size})",
+  "Checking the downloaded files": "Đang kiểm tra các file đã tải",
+  "Preparing the download": "Đang chuẩn bị tải",
+  "The download failed:": "Tải về thất bại:",
+  "The decision runtime is not installed.": "Runtime quyết định (sen-sysone) chưa được cài.",
+  "The decision model is installed.": "Đã cài xong mô hình quyết định."
 }

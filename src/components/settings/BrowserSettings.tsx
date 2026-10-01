@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -9,6 +9,7 @@ import {
   Input,
   InputNumber,
   Popconfirm,
+  Progress,
   Select,
   Space,
   Spin,
@@ -26,7 +27,8 @@ import {
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useLang } from '../../i18n';
-import { apiGet } from '../../lib/runtimeApi';
+import { apiGet, runtimeMissingFromError } from '../../lib/runtimeApi';
+import { ACTIVE, api as decisionGet, fmtBytes, post as decisionPost, type ListResponse, type ModelRow } from './decisionApi';
 import {
   browserAgentApi,
   changedFields,
@@ -153,19 +155,11 @@ export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void; onO
           />
         )}
         {view.engine === 'v2' && view.decisionModel?.needed && !view.decisionModel.installed && (
-          <Alert
-            style={{ marginTop: 12 }}
-            type="warning"
-            showIcon
-            message={`${t('The decision model is not installed:')} ${view.decisionModel.id}`}
-            description={t('Every browser step is then chosen by the chat model: seconds per step instead of a fraction of one.')}
-            action={
-              onOpenDecisionSettings && (
-                <Button size="small" type="primary" onClick={onOpenDecisionSettings}>
-                  {t('Open Decision settings')}
-                </Button>
-              )
-            }
+          <DecisionModelNotice
+            id={view.decisionModel.id}
+            onInstalled={load}
+            onOpenDecisionSettings={onOpenDecisionSettings}
+            onOpenRuntimeSettings={onOpenRuntimeSettings}
           />
         )}
       </Card>
@@ -299,6 +293,130 @@ export const BrowserSettings: React.FC<{ onOpenRuntimeSettings?: () => void; onO
       <ExtensionCard />
       <ActivityCard />
     </Space>
+  );
+};
+
+/**
+ * The browser engine's decision checkpoint is not on disk. When the decision
+ * runtime's catalog has it, it downloads from here — with progress, polled
+ * only while a download runs — and the notice goes once it is installed;
+ * otherwise it points to Settings → Decision, where a model is imported.
+ */
+const DecisionModelNotice: React.FC<{
+  id: string;
+  onInstalled: () => void;
+  onOpenDecisionSettings?: () => void;
+  onOpenRuntimeSettings?: () => void;
+}> = ({ id, onInstalled, onOpenDecisionSettings, onOpenRuntimeSettings }) => {
+  const { t, tArgs } = useLang();
+  // undefined while the first look is on its way; null when the runtime does not list it.
+  const [row, setRow] = useState<ModelRow | null | undefined>(undefined);
+  const [runtimeMissing, setRuntimeMissing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const watched = useRef(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const list = await decisionGet<ListResponse>('/api/decision/models');
+      const found = list.models.find((m) => m.id === id) ?? null;
+      setRow(found);
+      setRuntimeMissing(false);
+      if (found?.job && ACTIVE.includes(found.job.status)) watched.current = true;
+      if (found?.installed) {
+        if (watched.current) message.success(t('The decision model is installed.'));
+        onInstalled();
+      }
+    } catch (e) {
+      if (runtimeMissingFromError(e)) setRuntimeMissing(true);
+      else setRow(null);
+    }
+  }, [id, onInstalled, t]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const job = row?.job ?? null;
+  const running = !!job && ACTIVE.includes(job.status);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(refresh, 1000);
+    return () => clearInterval(timer);
+  }, [running, refresh]);
+
+  const act = async (what: 'download' | 'cancel') => {
+    setBusy(true);
+    try {
+      await decisionPost(`/api/decision/models/${id}/${what}`);
+    } catch (e: any) {
+      message.error(e?.message ?? String(e));
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  const size = row?.approx_size_mb ? fmtBytes(row.approx_size_mb * 1024 * 1024) : '';
+  let action: React.ReactNode = null;
+  if (runtimeMissing) {
+    action = onOpenRuntimeSettings && (
+      <Button size="small" type="primary" onClick={onOpenRuntimeSettings}>
+        {t('Open Runtime settings')}
+      </Button>
+    );
+  } else if (row?.catalog) {
+    action = running ? (
+      <Button size="small" loading={busy} onClick={() => act('cancel')}>
+        {t('Cancel')}
+      </Button>
+    ) : (
+      <Button size="small" type="primary" loading={busy} onClick={() => act('download')}>
+        {job?.status === 'error' ? t('Retry') : size ? tArgs('Download ({size})', { size }) : t('Download')}
+      </Button>
+    );
+  } else if (row !== undefined) {
+    action = onOpenDecisionSettings && (
+      <Button size="small" type="primary" onClick={onOpenDecisionSettings}>
+        {t('Open Decision settings')}
+      </Button>
+    );
+  }
+
+  return (
+    <Alert
+      style={{ marginTop: 12 }}
+      type="warning"
+      showIcon
+      message={`${t('The decision model is not installed:')} ${id}`}
+      description={
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Text>{t('Every browser step is then chosen by the chat model: seconds per step instead of a fraction of one.')}</Text>
+          {running && job && (
+            <>
+              <Progress
+                size="small"
+                percent={job.total_bytes > 0 ? Math.floor((job.done_bytes / job.total_bytes) * 100) : 0}
+                status="active"
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {job.status === 'verifying'
+                  ? t('Checking the downloaded files')
+                  : job.total_bytes > 0
+                    ? `${fmtBytes(job.done_bytes)} / ${fmtBytes(job.total_bytes)}${job.current_file ? ` · ${job.current_file}` : ''}`
+                    : t('Preparing the download')}
+              </Text>
+            </>
+          )}
+          {job?.status === 'error' && job.error && (
+            <Text type="danger" style={{ fontSize: 12 }}>
+              {t('The download failed:')} {job.error}
+            </Text>
+          )}
+          {runtimeMissing && <Text type="secondary">{t('The decision runtime is not installed.')}</Text>}
+        </Space>
+      }
+      action={action}
+    />
   );
 };
 
