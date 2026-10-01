@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Button, Input, Modal, Progress, Select, Space, Typography, message } from 'antd';
 import { CloudDownloadOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons';
 import { useLang } from '../../i18n';
-import { fmtBytes, localModelsApi, type HfFilesResponse, type LocalDownload } from '../../lib/runtimeApi';
+import { fmtBytes, GTURBO_MODEL, localModelsApi, type HfFilesResponse, type LocalDownload } from '../../lib/runtimeApi';
 
 const { Text, Paragraph } = Typography;
 
@@ -10,7 +10,14 @@ interface Props {
   open: boolean;
   onClose: () => void;
   downloads: LocalDownload[];
-  onStartDownload: (body: { repo: string; file?: string; mmproj?: string; revision?: string }) => Promise<{ downloadId: string }>;
+  onStartDownload: (body: {
+    repo?: string;
+    file?: string;
+    mmproj?: string;
+    revision?: string;
+    format?: 'gturbo';
+    vision?: boolean;
+  }) => Promise<{ downloadId: string }>;
   onCancelDownload: (id: string) => Promise<unknown>;
 }
 
@@ -68,12 +75,17 @@ export const LocalModelDownloadDialog: React.FC<Props> = ({ open, onClose, downl
     if (result.format === 'gguf' && !file) return;
     setStarting(true);
     try {
-      const r = await onStartDownload({
-        repo: trimmed,
-        file: result.format === 'gguf' ? file : undefined,
-        mmproj: result.format === 'gguf' ? mmproj : undefined,
-        revision: revision.trim() || undefined,
-      });
+      const pinned = trimmed.toLowerCase() === GTURBO_MODEL.repo && result.format !== 'gguf';
+      const r = await onStartDownload(
+        pinned
+          ? { repo: GTURBO_MODEL.repo, revision: GTURBO_MODEL.revision, format: 'gturbo' }
+          : {
+              repo: trimmed,
+              file: result.format === 'gguf' ? file : undefined,
+              mmproj: result.format === 'gguf' ? mmproj : undefined,
+              revision: revision.trim() || undefined,
+            }
+      );
       setDownloadId(r.downloadId);
     } catch (e: any) {
       message.error(e?.message ?? String(e));
@@ -172,7 +184,18 @@ export const LocalModelDownloadDialog: React.FC<Props> = ({ open, onClose, downl
             </Space>
           )}
 
-          {result && result.format === 'mlx' && (
+          {result && result.format === 'mlx' && result.repo.toLowerCase() === GTURBO_MODEL.repo && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={t(
+                'This repo is the TurboFieldfare source. SenClaw repacks the pinned revision into a .gturbo directory instead of saving the raw MLX snapshot.'
+              )}
+            />
+          )}
+
+          {result && result.format === 'mlx' && result.repo.toLowerCase() !== GTURBO_MODEL.repo && (
             <Paragraph type="secondary">
               {tArgs('This is an MLX snapshot — the whole repo ({count} files) downloads as one model.', {
                 count: result.files.length,

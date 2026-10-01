@@ -59,7 +59,14 @@ export function useLocalModels() {
   }, [view, refreshView]);
 
   const startDownload = useCallback(
-    async (body: { repo: string; file?: string; mmproj?: string; revision?: string }) => {
+    async (body: {
+      repo?: string;
+      file?: string;
+      mmproj?: string;
+      revision?: string;
+      format?: 'gturbo' | 'gguf' | 'mlx';
+      vision?: boolean;
+    }) => {
       const r = await localModelsApi.download(body);
       await refreshView();
       return r;

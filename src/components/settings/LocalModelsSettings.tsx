@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Alert, Button, Popconfirm, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Popconfirm, Progress, Space, Spin, Table, Tag, Tooltip, Typography, message } from 'antd';
 import { CloudDownloadOutlined, DeleteOutlined, EyeOutlined, PlayCircleOutlined, PoweroffOutlined } from '@ant-design/icons';
 import { useLang } from '../../i18n';
 import { useLocalModels } from '../../hooks/useLocalModels';
 import {
   fmtBytes,
+  GTURBO_MODEL,
   runtimeMissingFromError,
   type LocalModel,
   type ProcessState,
@@ -64,7 +65,9 @@ export const LocalModelsSettings: React.FC<Props> = ({ onOpenRuntimeSettings }) 
         <div>
           <Space size={6} wrap>
             <Text strong>{m.name}</Text>
-            <Tag color={m.format === 'gguf' ? 'geekblue' : 'purple'}>{m.format.toUpperCase()}</Tag>
+            <Tag color={m.format === 'gguf' ? 'geekblue' : m.format === 'gturbo' ? 'green' : 'purple'}>
+              {m.format.toUpperCase()}
+            </Tag>
             {m.quant && <Tag>{m.quant}</Tag>}
             {m.vision && <Tag color="cyan">{t('vision')}</Tag>}
             {m.embedding && <Tag color="gold">{t('embedding')}</Tag>}
@@ -154,12 +157,47 @@ export const LocalModelsSettings: React.FC<Props> = ({ onOpenRuntimeSettings }) 
         <Title level={3} style={{ margin: 0 }}>
           {t('Local models')}
         </Title>
-        <Button type="primary" icon={<CloudDownloadOutlined />} onClick={() => setDownloadOpen(true)}>
-          {t('Download from Hugging Face')}
-        </Button>
+        <Space wrap>
+          <Button
+            icon={<CloudDownloadOutlined />}
+            loading={busy.gturbo === 'download'}
+            onClick={() =>
+              act('gturbo', 'download', () =>
+                startDownload({ format: 'gturbo', repo: GTURBO_MODEL.repo, revision: GTURBO_MODEL.revision })
+              )
+            }
+          >
+            {t('Download Gemma 4')}
+          </Button>
+          {view?.models.some((m) => m.format === 'gturbo' && !m.vision) && (
+            <Button
+              loading={busy['gturbo-vision'] === 'download'}
+              onClick={() => {
+                act('gturbo-vision', 'download', () =>
+                  startDownload({
+                    format: 'gturbo',
+                    repo: GTURBO_MODEL.repo,
+                    revision: GTURBO_MODEL.revision,
+                    vision: true,
+                  })
+                );
+              }}
+            >
+              {t('Download image pack')}
+            </Button>
+          )}
+          <Button type="primary" icon={<CloudDownloadOutlined />} onClick={() => setDownloadOpen(true)}>
+            {t('Download from Hugging Face')}
+          </Button>
+        </Space>
       </Space>
       <Paragraph type="secondary">
         {t('GGUF and MLX model files on this machine. Loading one starts (or reuses) the runtime selected for its format.')}
+      </Paragraph>
+      <Paragraph type="secondary">
+        {t(
+          'TurboFieldfare runs only Gemma 4 26B-A4B IT 4-bit. Download repacks that checkpoint into a .gturbo directory (about 14.3 GB).'
+        )}
       </Paragraph>
 
       {loadError && <Alert type="error" showIcon message={loadError} style={{ marginBottom: 16 }} />}
@@ -171,6 +209,24 @@ export const LocalModelsSettings: React.FC<Props> = ({ onOpenRuntimeSettings }) 
         <Spin />
       ) : (
         <>
+          {(view?.downloads ?? [])
+            .filter((d) => d.state === 'queued' || d.state === 'listing' || d.state === 'downloading')
+            .map((d) => (
+              <div key={d.downloadId} style={{ marginBottom: 12 }}>
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Text>{d.files[0] || d.repo}</Text>
+                  <Button size="small" onClick={() => cancelDownload(d.downloadId)}>
+                    {t('Cancel')}
+                  </Button>
+                </Space>
+                <Progress percent={Math.round(d.percent ?? 0)} size="small" />
+              </div>
+            ))}
+          {(view?.downloads ?? [])
+            .filter((d) => d.state === 'failed')
+            .map((d) => (
+              <Alert key={d.downloadId} type="error" showIcon style={{ marginBottom: 12 }} message={d.error || d.repo} />
+            ))}
           <Table
             rowKey="key"
             dataSource={view?.models ?? []}

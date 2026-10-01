@@ -342,7 +342,11 @@ export const runtimeApi = {
     apiGet<{ path: string; lines: string[] }>(`/api/runtimes/${encodeURIComponent(id)}/logs?lines=${lines}`),
 };
 
-// ---- Local models (§5.3) ----
+/** TurboFieldfareRepack's only source. Must match `SupportedModelSource`. */
+export const GTURBO_MODEL = {
+  repo: 'mlx-community/gemma-4-26b-a4b-it-4bit',
+  revision: '0d77464eeb233a2da68ebf9d7dc4edaac7db956d',
+} as const;
 
 export const localModelsApi = {
   list: () => apiGet<LocalModelsView>('/api/local-models'),
@@ -350,8 +354,14 @@ export const localModelsApi = {
     apiGet<HfFilesResponse>(
       `/api/local-models/hf-files?repo=${encodeURIComponent(repo)}${revision ? `&revision=${encodeURIComponent(revision)}` : ''}`
     ),
-  download: (body: { repo: string; file?: string; mmproj?: string; revision?: string }) =>
-    apiPost<{ downloadId: string }>('/api/local-models/download', body),
+  download: (body: {
+    repo?: string;
+    file?: string;
+    mmproj?: string;
+    revision?: string;
+    format?: 'gturbo' | 'gguf' | 'mlx';
+    vision?: boolean;
+  }) => apiPost<{ downloadId: string }>('/api/local-models/download', body),
   downloads: () => apiGet<{ downloads: LocalDownload[] }>('/api/local-models/downloads'),
   downloadStatus: (id: string) => apiGet<LocalDownload>(`/api/local-models/downloads/${encodeURIComponent(id)}`),
   cancelDownload: (id: string) =>
