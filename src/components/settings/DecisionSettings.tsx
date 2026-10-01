@@ -66,6 +66,12 @@ function pretty(v: unknown): string {
  * `JSON.parse` → `JSON.stringify`: that moves integer-like keys ("1", "10")
  * to the front, and key order is what the model reads.
  */
+/** A commit sha shortens to 7 characters; a tag or branch reads whole. */
+function revisionLabel(revision?: string): string {
+  const r = revision ?? 'main';
+  return /^[0-9a-f]{40}$/.test(r) ? r.slice(0, 7) : r;
+}
+
 function stateJson(text: string): string {
   const t = text.trim();
   try {
@@ -518,11 +524,11 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
                 <>
                   {' · '}
                   <a
-                    href={`https://huggingface.co/${m.source.repo}/tree/${m.source.revision ?? 'main'}`}
+                    href={m.source.url ?? `https://huggingface.co/${m.source.repo}/tree/${m.source.revision ?? 'main'}`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {m.source.repo}@{(m.source.revision ?? 'main').slice(0, 7)}
+                    {m.source.repo}@{revisionLabel(m.source.revision)}
                   </a>
                 </>
               )}

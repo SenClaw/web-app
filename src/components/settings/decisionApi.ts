@@ -49,7 +49,9 @@ export interface ModelRow {
   description: string;
   kind: Kind | null;
   catalog: boolean;
-  source: { type?: string; repo?: string; revision?: string; path?: string } | null;
+  // `url`: where the files came from (a Hub tree or a GitHub release); absent
+  // from older runtimes and installs, which all came from the Hub.
+  source: { type?: string; repo?: string; revision?: string; path?: string; url?: string } | null;
   approx_size_mb: number | null;
   size_bytes: number;
   installed: boolean;
