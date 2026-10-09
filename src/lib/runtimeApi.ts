@@ -246,7 +246,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-function send<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+function send<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
   return request<T>(path, {
     method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
@@ -258,6 +258,7 @@ export const apiGet = <T>(path: string) => request<T>(path);
 export const apiPost = <T>(path: string, body?: unknown) => send<T>('POST', path, body);
 export const apiPut = <T>(path: string, body?: unknown) => send<T>('PUT', path, body);
 export const apiDelete = <T>(path: string) => send<T>('DELETE', path);
+export const apiPatch = <T>(path: string, body?: unknown) => send<T>('PATCH', path, body);
 
 // ---- Runtime-missing detection (§5.2) ----
 
