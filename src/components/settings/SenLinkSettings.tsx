@@ -257,7 +257,9 @@ export const SenLinkSettings: React.FC = () => {
               disabled={!draft.enabled}
               onClick={async () => {
                 try {
-                  setInvite(await senLinkApi.invite());
+                  const inv = await senLinkApi.invite();
+                  setInvite(inv);
+                  if (inv.warning) message.warning(inv.warning);
                 } catch (e) {
                   message.error(errText(e));
                 }

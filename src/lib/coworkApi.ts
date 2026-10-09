@@ -98,7 +98,10 @@ export const senLinkApi = {
   putSettings: (s: SenLinkSettings) => apiPut<SenLinkSettings>('/api/sen-link/settings', s),
   peers: () => apiGet<{ peers: SenLinkPeer[] }>('/api/sen-link/peers'),
   /** `connect` is set when the daemon has a hub: a `senlink:` string the other side pairs with. */
-  invite: () => apiPost<{ code: string; expiresAt: number; url: string | null; connect: string | null }>('/api/sen-link/invites'),
+  invite: () =>
+    apiPost<{ code: string; expiresAt: number; url: string | null; connect: string | null; warning?: string | null }>(
+      '/api/sen-link/invites',
+    ),
   pair: (url: string, code: string) => apiPost<SenLinkPeer>('/api/sen-link/peers/pair', { url, code }),
   pairConnect: (connect: string) => apiPost<SenLinkPeer>('/api/sen-link/peers/pair', { connect }),
   patchPeer: (id: string, p: { name?: string; autoRun?: boolean; assignee?: string }) =>
