@@ -63,13 +63,17 @@ export interface SenLinkSettings {
   boardTitle: string;
   workspaceDir: string | null;
   defaultAssignee: string | null;
+  /** SenClaw hub for peers behind NAT; when set, every invite mints a hub channel. */
+  hubUrl: string | null;
 }
 
 export interface SenLinkPeer {
   id: string;
   name: string;
   url: string | null;
-  /** We hold a URL and a token for it, so tasks can be sent. */
+  /** Reached through its own hub channel. */
+  viaRelay: boolean;
+  /** We hold a URL or hub channel and a token for it, so tasks can be sent. */
   canSend: boolean;
   /** Its tasks skip Triage and go straight to Ready. */
   autoRun: boolean;
@@ -88,11 +92,15 @@ export interface A2ATask {
 
 export const senLinkApi = {
   status: () =>
-    apiGet<{ settings: SenLinkSettings; agentCard: Record<string, unknown>; peerCount: number }>('/api/sen-link/status'),
+    apiGet<{ settings: SenLinkSettings; agentCard: Record<string, unknown>; peerCount: number; hubChannels: number }>(
+      '/api/sen-link/status',
+    ),
   putSettings: (s: SenLinkSettings) => apiPut<SenLinkSettings>('/api/sen-link/settings', s),
   peers: () => apiGet<{ peers: SenLinkPeer[] }>('/api/sen-link/peers'),
-  invite: () => apiPost<{ code: string; expiresAt: number; url: string | null }>('/api/sen-link/invites'),
+  /** `connect` is set when the daemon has a hub: a `senlink:` string the other side pairs with. */
+  invite: () => apiPost<{ code: string; expiresAt: number; url: string | null; connect: string | null }>('/api/sen-link/invites'),
   pair: (url: string, code: string) => apiPost<SenLinkPeer>('/api/sen-link/peers/pair', { url, code }),
+  pairConnect: (connect: string) => apiPost<SenLinkPeer>('/api/sen-link/peers/pair', { connect }),
   patchPeer: (id: string, p: { name?: string; autoRun?: boolean; assignee?: string }) =>
     apiPatch<SenLinkPeer>(`/api/sen-link/peers/${encodeURIComponent(id)}`, p),
   removePeer: (id: string) => apiDelete<void>(`/api/sen-link/peers/${encodeURIComponent(id)}`),

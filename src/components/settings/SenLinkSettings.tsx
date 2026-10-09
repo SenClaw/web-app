@@ -129,7 +129,8 @@ export const SenLinkSettings: React.FC = () => {
   const [peers, setPeers] = useState<SenLinkPeer[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [invite, setInvite] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [invite, setInvite] = useState<{ code: string; expiresAt: number; connect: string | null } | null>(null);
+  const [connectStr, setConnectStr] = useState('');
   const [pairUrl, setPairUrl] = useState('');
   const [pairCode, setPairCode] = useState('');
   const [pairing, setPairing] = useState(false);
@@ -216,6 +217,17 @@ export const SenLinkSettings: React.FC = () => {
             />
           </Field>
         </Space>
+        <Field
+          label={t('Hub URL')}
+          help={t('A SenClaw hub for peers that cannot reach each other directly (NAT). Each invite then gets its own encrypted hub channel.')}
+        >
+          <Input
+            style={{ width: 320 }}
+            placeholder="https://hub.example.com"
+            value={draft.hubUrl ?? ''}
+            onChange={(e) => set('hubUrl', orNull(e.target.value))}
+          />
+        </Field>
         <Field label={t('Description')}>
           <Input value={draft.description} onChange={(e) => set('description', e.target.value)} />
         </Field>
@@ -253,7 +265,12 @@ export const SenLinkSettings: React.FC = () => {
             >
               {t('Create invite code')}
             </Button>
-            {invite && (
+            {invite?.connect && (
+              <Paragraph copyable={{ text: invite.connect }} code style={{ wordBreak: 'break-all', marginBottom: 0, maxWidth: 520 }}>
+                {invite.connect}
+              </Paragraph>
+            )}
+            {invite && !invite.connect && (
               <Text>
                 <Text code copyable style={{ fontSize: 18 }}>
                   {invite.code}
@@ -294,6 +311,34 @@ export const SenLinkSettings: React.FC = () => {
               {t('Pair')}
             </Button>
           </Space>
+          <Space wrap>
+            <Input
+              style={{ width: 470 }}
+              placeholder={t('…or paste a senlink: connection string (hub invite)')}
+              value={connectStr}
+              onChange={(e) => setConnectStr(e.target.value)}
+            />
+            <Button
+              icon={<LinkOutlined />}
+              loading={pairing}
+              disabled={!draft.enabled || !connectStr.trim().startsWith('senlink:')}
+              onClick={async () => {
+                setPairing(true);
+                try {
+                  const p = await senLinkApi.pairConnect(connectStr.trim());
+                  message.success(`${t('Paired with')} ${p.name}`);
+                  setConnectStr('');
+                  load();
+                } catch (e) {
+                  message.error(errText(e));
+                } finally {
+                  setPairing(false);
+                }
+              }}
+            >
+              {t('Pair via hub')}
+            </Button>
+          </Space>
         </Space>
       </Card>
 
@@ -309,7 +354,10 @@ export const SenLinkSettings: React.FC = () => {
             expandable={{ expandedRowRender: (p) => <PeerTasks peer={p} />, rowExpandable: (p) => p.canSend }}
             columns={[
               { title: t('Name'), dataIndex: 'name' },
-              { title: 'URL', dataIndex: 'url', render: (u: string | null) => u ?? <Text type="secondary">—</Text> },
+              {
+                title: 'URL',
+                render: (_, p) => (p.viaRelay ? <Tag color="purple">hub</Tag> : p.url ?? <Text type="secondary">—</Text>),
+              },
               {
                 title: t('Their tasks run'),
                 render: (_, p) => (
