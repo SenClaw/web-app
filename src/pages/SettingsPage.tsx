@@ -23,7 +23,6 @@ import {
   DeploymentUnitOutlined,
   HddOutlined,
   GlobalOutlined,
-  RobotOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { useAppContext } from '../contexts/AppContext';
@@ -44,7 +43,6 @@ import { TtsSettings } from '../components/settings/TtsSettings';
 import { OcrSettings } from '../components/settings/OcrSettings';
 import { DecisionSettings } from '../components/settings/DecisionSettings';
 import { BrowserSettings } from '../components/settings/BrowserSettings';
-import { ClaudeCodeSettings } from '../components/settings/ClaudeCodeSettings';
 import { SenLinkSettings } from '../components/settings/SenLinkSettings';
 import { UserProfileSettings } from '../components/settings/UserProfileSettings';
 import { RuntimeSettings } from '../components/settings/RuntimeSettings';
@@ -71,7 +69,6 @@ type SettingsSection =
   | 'ocr'
   | 'decision'
   | 'browser'
-  | 'claude-code'
   | 'sen-link'
   | 'cognitive'
   | 'agent-behavior';
@@ -79,7 +76,7 @@ type SettingsSection =
 const SECTIONS = new Set<SettingsSection>([
   'general', 'user-profile', 'tool-rules', 'channels', 'agents', 'llm', 'provider-signin',
   'embedding', 'lsp', 'runtime', 'local-models', 'whisper', 'tts', 'ocr', 'decision', 'browser',
-  'claude-code', 'sen-link', 'cognitive', 'agent-behavior',
+  'sen-link', 'cognitive', 'agent-behavior',
 ]);
 
 export const SettingsPage: React.FC = () => {
@@ -130,7 +127,6 @@ export const SettingsPage: React.FC = () => {
       { key: 'ocr', icon: <ScanOutlined />, label: t('OCR') },
       { key: 'decision', icon: <BranchesOutlined />, label: t('Decision (Laya)') },
       { key: 'browser', icon: <GlobalOutlined />, label: t('Browser') },
-      { key: 'claude-code', icon: <RobotOutlined />, label: 'Claude Code' },
       { key: 'sen-link', icon: <ShareAltOutlined />, label: 'sen-link' },
       { key: 'cognitive', icon: <ExperimentOutlined />, label: t('Cognitive') },
     ],
@@ -204,8 +200,6 @@ export const SettingsPage: React.FC = () => {
             onOpenDecisionSettings={() => setActiveSection('decision')}
           />
         );
-      case 'claude-code':
-        return <ClaudeCodeSettings />;
       case 'sen-link':
         return <SenLinkSettings />;
       case 'cognitive':

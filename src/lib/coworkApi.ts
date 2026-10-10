@@ -1,56 +1,8 @@
-// Wire shapes of the daemon's Claude Code cowork (`/api/claude-code/*`) and
-// sen-link A2A peering (`/api/sen-link/*`) — the `senclaw` repo's
-// `src/claude_code/api.rs` and `src/sen_link/api.rs`.
+// Wire shapes of the daemon's sen-link A2A peering (`/api/sen-link/*`) — the
+// `senclaw` repo's `src/sen_link/api.rs`. (Claude Code lives in the app-claude
+// Space App, which ships its own page.)
 
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './runtimeApi';
-
-// ---- Claude Code ----
-
-/** `config.json` → `claudeCode`. PUT replaces the whole block, so send every field. */
-export interface ClaudeCodeSettings {
-  binary: string;
-  model: string | null;
-  permissionMode: 'default' | 'acceptEdits' | 'plan' | 'auto' | 'dontAsk' | 'bypassPermissions';
-  allowedTools: string[];
-  maxTurns: number;
-  maxBudgetUsd: number | null;
-  verifyCommand: string | null;
-  verifyTimeoutSecs: number;
-  maxStopBlocks: number;
-  review: boolean;
-  maxFixRounds: number;
-  mcpChatJid: string | null;
-}
-
-export interface ClaudeCodeStatus {
-  binary: string;
-  installed: boolean;
-  version: string | null;
-  assignee: string;
-  mcp: { endpoints: string[]; tokenFile: string; addCommands: string[] };
-}
-
-export interface ClaudeCodeRun {
-  runId: string;
-  itemId: string;
-  sessionId: string | null;
-  cwd: string;
-  phase: 'running' | 'verifying' | 'reviewing' | 'done' | 'blocked' | 'failed';
-  verifyCommand: string | null;
-  stopBlocks: number;
-  fixRound: number;
-  lastActivity: string;
-  costUsd: number;
-  startedAt: string;
-  finishedAt: string | null;
-}
-
-export const claudeCodeApi = {
-  status: () => apiGet<ClaudeCodeStatus>('/api/claude-code/status'),
-  runs: () => apiGet<{ runs: ClaudeCodeRun[] }>('/api/claude-code/runs'),
-  getSettings: () => apiGet<ClaudeCodeSettings>('/api/claude-code/settings'),
-  putSettings: (s: ClaudeCodeSettings) => apiPut<ClaudeCodeSettings>('/api/claude-code/settings', s),
-};
 
 // ---- sen-link ----
 
