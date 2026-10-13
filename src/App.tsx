@@ -15,6 +15,7 @@ import { CoworkTeamDetailPage } from './pages/CoworkTeamDetailPage';
 import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { BackgroundPage } from './pages/BackgroundPage';
+import { DatagenPage } from './pages/DatagenPage';
 import { PlanExitDialog } from './components/PlanExitDialog';
 import { LangProvider } from './i18n';
 
@@ -83,6 +84,7 @@ export function App() {
           <Route path="usage" element={<UsagePage />} />
           <Route path="workflows/runs" element={<WorkflowRunsPage />} />
           <Route path="background" element={<BackgroundPage />} />
+          <Route path="datagen" element={<DatagenPage />} />
         </Routes>
         {/* Global Plan-mode approval modal — surfaces when any agent calls ExitPlanMode. */}
         <PlanExitDialog

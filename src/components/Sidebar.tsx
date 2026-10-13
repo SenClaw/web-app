@@ -18,6 +18,7 @@ import {
   BellFilled,
   CheckOutlined,
   ClockCircleOutlined,
+  ExperimentOutlined,
   DeploymentUnitOutlined,
   MessageOutlined,
   AppstoreOutlined,
@@ -66,6 +67,7 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
   const isSettings  = location.pathname.startsWith('/settings');
   const isUsage     = location.pathname.startsWith('/usage');
   const isBackground = location.pathname.startsWith('/background');
+  const isDatagen   = location.pathname.startsWith('/datagen');
   const isWiki      = location.pathname.startsWith('/wiki');
   const isPlugins   = location.pathname.startsWith('/plugins');
   const isCognitive = location.pathname.startsWith('/cognitive');
@@ -181,6 +183,9 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
             </Tooltip>
             <Tooltip title={t('Background tasks')}>
               <Button type={isBackground ? 'primary' : 'text'} size="small" icon={<ClockCircleOutlined />} onClick={() => navigate('/background')} />
+            </Tooltip>
+            <Tooltip title={t('Datagen')}>
+              <Button type={isDatagen ? 'primary' : 'text'} size="small" icon={<ExperimentOutlined />} onClick={() => navigate('/datagen')} />
             </Tooltip>
             <Tooltip title={t('Token Usage')}>
               <Button type={isUsage ? 'primary' : 'text'} size="small" icon={<BarChartOutlined />} onClick={() => navigate('/usage')} />
