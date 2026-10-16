@@ -1,47 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Button, Drawer, Empty, Form, Input, InputNumber, Layout, Modal, Pagination, Progress, Select, Space, Spin,
+  Button, Drawer, Empty, Form, Input, InputNumber, Layout, Modal, Pagination, Progress, Segmented, Select, Space, Spin,
   Switch, Table, Tag, Tooltip, Typography, message,
 } from 'antd';
-import { DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EyeOutlined, ImportOutlined, PlusOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
 
 import { AppLayout } from '../components/AppLayout';
+import { ImportDrawer } from '../components/datagen/ImportDrawer';
+import { SourceCatalog } from '../components/datagen/SourceCatalog';
 import { useLang } from '../i18n';
+import {
+  datagenApi as api, feeds, fetchCatalog, sourceLabel, type CatalogEntry, type JobStatus, type PipelineName,
+} from '../lib/datagenApi';
 
 const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
 /**
  * Datagen: the daemon's dataset-generation jobs (`/api/datagen/*`, guide
- * `senclaw/docs/datagen.md`). Start a job for any of the five pipelines,
- * watch it fill, cancel it, read the records it wrote, delete a dataset.
+ * `senclaw/docs/datagen.md`). Start a job for any of the generating
+ * pipelines, watch it fill, cancel it, read the records it wrote, delete a
+ * dataset — and, on the "Source datasets" tab, install a dataset people
+ * wrote from the catalog or import one from a file, a URL or Hugging Face,
+ * then use it as seeds or problems for a new job.
  * Everything here is visible regardless of which chat started it — the
  * per-chat scoping applies to the agent's tools, not to the person.
  */
 
-type PipelineName = 'expand_seeds' | 'doc_qa' | 'reasoning_traces' | 'executable_qa' | 'export_logs';
+type GeneratingPipeline = Exclude<PipelineName, 'import'>;
 
-const PIPELINES: PipelineName[] = ['expand_seeds', 'doc_qa', 'reasoning_traces', 'executable_qa', 'export_logs'];
-
-interface JobStatus {
-  jobId: string;
-  name: string;
-  pipeline: string;
-  owner?: string | null;
-  state: string;
-  target: number;
-  accepted: number;
-  attempts: number;
-  llmCalls: number;
-  maxLlmCalls: number;
-  rejected: Record<string, number>;
-  model?: string | null;
-  note?: string | null;
-  error?: string | null;
-  dir: string;
-  startedAt: number;
-  finishedAt?: number | null;
-}
+const PIPELINES: GeneratingPipeline[] = ['expand_seeds', 'doc_qa', 'reasoning_traces', 'executable_qa', 'export_logs'];
 
 const STATE_COLOR: Record<string, string> = {
   running: 'processing',
@@ -51,26 +39,8 @@ const STATE_COLOR: Record<string, string> = {
   interrupted: 'orange',
 };
 
-// States and pipeline names reach `t()` through a variable.
-// i18n-dynamic: running, done, failed, cancelled, interrupted, expand_seeds, doc_qa, reasoning_traces, executable_qa, export_logs
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  if (!r.ok) {
-    const body = await r.text().catch(() => '');
-    let reason = body;
-    try {
-      reason = (JSON.parse(body) as { error?: string }).error ?? body;
-    } catch {
-      // not JSON: keep the text
-    }
-    throw new Error(reason || `HTTP ${r.status}`);
-  }
-  return (await r.json()) as T;
-}
+// States, pipeline names and record kinds reach `t()` through a variable.
+// i18n-dynamic: running, done, failed, cancelled, interrupted, expand_seeds, doc_qa, reasoning_traces, executable_qa, export_logs, import, labeled_text, qa_context, problem_answer, chat
 
 const errText = (e: unknown) => String(e instanceof Error ? e.message : e);
 
@@ -87,8 +57,15 @@ function split2(line: string, sep: string): [string, string | undefined] {
   return i < 0 ? [line, undefined] : [line.slice(0, i).trim(), line.slice(i + sep.length).trim()];
 }
 
+/** A dataset picked instead of typed lines: `{dataset, perLabel?}`. */
+function datasetRef(v: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const name = v[key];
+  if (typeof name !== 'string' || !name) return null;
+  return { dataset: name, ...(v.perLabel ? { perLabel: v.perLabel } : {}) };
+}
+
 /** Form values → the daemon's camelCase job body for one pipeline. */
-function buildBody(pipeline: PipelineName, v: Record<string, unknown>): Record<string, unknown> {
+function buildBody(pipeline: GeneratingPipeline, v: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = { pipeline };
   const put = (k: string, val: unknown) => {
     if (val !== undefined && val !== null && val !== '') body[k] = val;
@@ -101,8 +78,10 @@ function buildBody(pipeline: PipelineName, v: Record<string, unknown>): Record<s
   }
   switch (pipeline) {
     case 'expand_seeds': {
-      // `label | request` per line, or just the request.
-      body.seeds = lines(v.seeds as string).map((l) => {
+      // `label | request` per line, or just the request — or a dataset.
+      const from = datasetRef(v, 'seedsFrom');
+      if (from) body.seedsFrom = from;
+      else body.seeds = lines(v.seeds as string).map((l) => {
         const [a, b] = split2(l, ' | ');
         return b === undefined ? a : { label: a, text: b };
       });
@@ -122,8 +101,10 @@ function buildBody(pipeline: PipelineName, v: Record<string, unknown>): Record<s
       put('multiHop', v.multiHop);
       put('verify', v.verify);
       break;
-    case 'reasoning_traces':
-      body.problems = lines(v.problems as string).map((l) => {
+    case 'reasoning_traces': {
+      const from = datasetRef(v, 'problemsFrom');
+      if (from) body.problemsFrom = from;
+      else body.problems = lines(v.problems as string).map((l) => {
         const [problem, answer] = split2(l, ' || ');
         return answer === undefined ? problem : { problem, answer };
       });
@@ -131,14 +112,18 @@ function buildBody(pipeline: PipelineName, v: Record<string, unknown>): Record<s
       put('maxIterations', v.maxIterations);
       put('threshold', v.threshold);
       break;
-    case 'executable_qa':
-      body.seeds = lines(v.seeds as string).map((l) => {
+    }
+    case 'executable_qa': {
+      const from = datasetRef(v, 'seedsFrom');
+      if (from) body.seedsFrom = from;
+      else body.seeds = lines(v.seeds as string).map((l) => {
         const [question, answer] = split2(l, ' || ');
         return answer === undefined ? question : { question, answer };
       });
       put('target', v.target);
       put('timeoutMs', v.timeoutMs);
       break;
+    }
     case 'export_logs':
       body.chats = lines(v.chats as string);
       put('format', v.format);
@@ -156,7 +141,12 @@ export function DatagenPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [pipeline, setPipeline] = useState<PipelineName>('expand_seeds');
+  const [pipeline, setPipeline] = useState<GeneratingPipeline>('expand_seeds');
+  const [view, setView] = useState<'jobs' | 'sources'>('jobs');
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [importing, setImporting] = useState(false);
+  // A dataset chosen with "Use as seeds / problems", put in the new job's form.
+  const [prefill, setPrefill] = useState<string | undefined>();
   const [viewing, setViewing] = useState<string | null>(null);
   const [records, setRecords] = useState<unknown[]>([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
@@ -168,13 +158,15 @@ export function DatagenPage() {
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [j, d] = await Promise.all([
+      const [j, d, c] = await Promise.all([
         api<{ jobs: JobStatus[] }>('/api/datagen/jobs'),
         api<{ datasets: JobStatus[]; root: string }>('/api/datagen/datasets'),
+        fetchCatalog(),
       ]);
       setJobs(j.jobs ?? []);
       setDatasets(d.datasets ?? []);
       setRoot(d.root ?? '');
+      setCatalog(c.entries ?? []);
     } catch (e) {
       if (!quiet) message.error(errText(e));
     } finally {
@@ -215,6 +207,14 @@ export function DatagenPage() {
     void loadRecords(name, 1);
   };
 
+  /** Open the new-job drawer for `p`, fed from dataset `name`. */
+  const useDataset = (name: string, p: GeneratingPipeline) => {
+    form.resetFields();
+    setPrefill(name);
+    setPipeline(p);
+    setCreating(true);
+  };
+
   const cancel = async (job: JobStatus) => {
     try {
       await api(`/api/datagen/jobs/${encodeURIComponent(job.jobId)}/cancel`, { method: 'POST' });
@@ -248,6 +248,7 @@ export function DatagenPage() {
       await api('/api/datagen/jobs', { method: 'POST', body: JSON.stringify(buildBody(pipeline, values)) });
       message.success(t('Started'));
       setCreating(false);
+      setPrefill(undefined);
       form.resetFields();
       await load(true);
     } catch (e) {
@@ -263,13 +264,20 @@ export function DatagenPage() {
   const progressCol = {
     title: t('Progress'),
     width: 200,
-    render: (_: unknown, j: JobStatus) => (
+    render: (_: unknown, j: JobStatus) => {
+      // An import's target is a ceiling, not a goal: progress is rows read
+      // out of the rows the source has.
+      const sourceRows = Number((j.provenance as { sourceRows?: number } | null | undefined)?.sourceRows ?? 0);
+      const isImport = j.pipeline === 'import';
+      const of = isImport ? Math.min(j.target, sourceRows || j.target) : j.target;
+      const done = isImport ? (j.state === 'running' ? j.attempts : of) : j.accepted;
+      return (
       <div>
         <Progress
-          percent={j.target ? Math.round((j.accepted / j.target) * 100) : 0}
+          percent={of ? Math.min(100, Math.round((done / of) * 100)) : 0}
           size="small"
           status={j.state === 'failed' ? 'exception' : j.state === 'running' ? 'active' : undefined}
-          format={() => `${j.accepted}/${j.target}`}
+          format={() => (isImport ? `${j.accepted}` : `${j.accepted}/${j.target}`)}
         />
         {j.maxLlmCalls > 0 && (
           <Text type="secondary" style={{ fontSize: 11 }}>
@@ -277,7 +285,8 @@ export function DatagenPage() {
           </Text>
         )}
       </div>
-    ),
+      );
+    },
   };
 
   const stateCol = {
@@ -333,13 +342,32 @@ export function DatagenPage() {
       nameCol,
       stateCol,
       progressCol,
-      { title: t('Model'), width: 170, render: (_: unknown, d: JobStatus) => <Text style={{ fontSize: 12 }}>{d.model || '—'}</Text> },
+      {
+        title: t('Source'),
+        width: 200,
+        render: (_: unknown, d: JobStatus) => {
+          const src = sourceLabel(d.provenance);
+          if (!src) return <Text style={{ fontSize: 12 }}>{d.model || '—'}</Text>;
+          return (
+            <Space size={4} wrap>
+              <Text style={{ fontSize: 12 }}>{src}</Text>
+              {d.provenance?.license && <Tag style={{ fontSize: 11 }}>{d.provenance.license}</Tag>}
+            </Space>
+          );
+        },
+      },
       { title: t('Started at'), width: 170, render: (_: unknown, d: JobStatus) => <Text style={{ fontSize: 12 }}>{fmtTime(d.startedAt)}</Text> },
       {
         title: '',
-        width: 90,
+        width: 210,
         render: (_: unknown, d: JobStatus) => (
-          <Space size={2}>
+          <Space size={2} wrap>
+            {d.state !== 'running' && feeds(d).seeds && (
+              <Button size="small" type="link" onClick={() => useDataset(d.name, 'expand_seeds')}>{t('Use as seeds')}</Button>
+            )}
+            {d.state !== 'running' && feeds(d).problems && (
+              <Button size="small" type="link" onClick={() => useDataset(d.name, 'reasoning_traces')}>{t('Use as problems')}</Button>
+            )}
             <Tooltip title={t('View records')}>
               <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => openRecords(d.name)} />
             </Tooltip>
@@ -351,8 +379,35 @@ export function DatagenPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, viewing],
+    [t, viewing, form],
   );
+
+  // Datasets a new job can read from, finished ones only.
+  const datasetOptions = datasets
+    .filter((d) => d.state !== 'running' && d.state !== 'failed')
+    .map((d) => ({ value: d.name, label: d.name }));
+
+  /** "Or take them from a dataset", shared by the three pipelines that can. */
+  const fromDatasetFields = (key: 'seedsFrom' | 'problemsFrom') => (
+    <Space wrap>
+      <Form.Item name={key} label={key === 'seedsFrom' ? t('Or seeds from a dataset') : t('Or problems from a dataset')}
+        initialValue={prefill} style={{ minWidth: 260 }}>
+        <Select allowClear showSearch options={datasetOptions} placeholder={t('dataset')} />
+      </Form.Item>
+      <Form.Item name="perLabel" label={t('Per label')} tooltip={t('At most this many records of each label, spread across the dataset.')}>
+        <InputNumber min={1} max={1000} />
+      </Form.Item>
+    </Space>
+  );
+
+  /** A line field that is required only when no dataset was picked instead. */
+  const unlessFrom = (key: 'seedsFrom' | 'problemsFrom', msg: string) => [
+    ({ getFieldValue }: { getFieldValue: (n: string) => unknown }) => ({
+      validator(_: unknown, value: unknown) {
+        return value || getFieldValue(key) ? Promise.resolve() : Promise.reject(new Error(msg));
+      },
+    }),
+  ];
 
   const commonModelFields = (
     <>
@@ -368,13 +423,15 @@ export function DatagenPage() {
     </>
   );
 
-  const pipelineFields: Record<PipelineName, ReactNode> = {
+  const pipelineFields: Record<GeneratingPipeline, ReactNode> = {
     expand_seeds: (
       <>
-        <Form.Item name="seeds" label={t('Example requests')} rules={[{ required: true }]}
+        <Form.Item name="seeds" label={t('Example requests')} rules={unlessFrom('seedsFrom', t('Give example requests or pick a dataset'))}
+          dependencies={['seedsFrom']}
           extra={t('One per line. Prefix a label with " | " to make a labelled set, e.g. "browser | find a cheap flight".')}>
           <Input.TextArea rows={6} />
         </Form.Item>
+        {fromDatasetFields('seedsFrom')}
         <Form.Item name="labels" label={t('Label descriptions')} extra={t('Optional, one per line: "label: what it means".')}>
           <Input.TextArea rows={3} />
         </Form.Item>
@@ -422,10 +479,12 @@ export function DatagenPage() {
     ),
     reasoning_traces: (
       <>
-        <Form.Item name="problems" label={t('Problems')} rules={[{ required: true }]}
+        <Form.Item name="problems" label={t('Problems')} rules={unlessFrom('problemsFrom', t('Give problems or pick a dataset'))}
+          dependencies={['problemsFrom']}
           extra={t('One per line. Add the known answer after " || " to have it checked.')}>
           <Input.TextArea rows={6} />
         </Form.Item>
+        {fromDatasetFields('problemsFrom')}
         <Space wrap>
           <Form.Item name="target" label={t('Target')}>
             <InputNumber min={1} />
@@ -441,10 +500,12 @@ export function DatagenPage() {
     ),
     executable_qa: (
       <>
-        <Form.Item name="seeds" label={t('Example problems')} rules={[{ required: true }]}
+        <Form.Item name="seeds" label={t('Example problems')} rules={unlessFrom('seedsFrom', t('Give example problems or pick a dataset'))}
+          dependencies={['seedsFrom']}
           extra={t('One per line, optionally "question || answer". Generated programs run in the sandbox; the job refuses to start without an enforced one.')}>
           <Input.TextArea rows={6} />
         </Form.Item>
+        {fromDatasetFields('seedsFrom')}
         <Space wrap>
           <Form.Item name="target" label={t('Target')} initialValue={50}>
             <InputNumber min={1} max={1000} />
@@ -481,20 +542,44 @@ export function DatagenPage() {
             <div style={{ flex: 1 }}>
               <Title level={2} style={{ margin: 0 }}>{t('Datagen')}</Title>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                {t('Build datasets in the background: labelled eval sets, Q&A from documents, checked reasoning traces, computable problems, or your own chat logs.')}
+                {t('Build datasets in the background: labelled eval sets, Q&A from documents, checked reasoning traces, computable problems, or your own chat logs — or import datasets people wrote.')}
                 {root && <> <Text code style={{ fontSize: 12 }}>{root}</Text></>}
               </Paragraph>
             </div>
             <Space>
               <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('Reload')}</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>{t('New job')}</Button>
+              <Button icon={<ImportOutlined />} onClick={() => setImporting(true)}>{t('Import file / URL…')}</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setPrefill(undefined); setCreating(true); }}>{t('New job')}</Button>
             </Space>
           </div>
+          <Segmented
+            style={{ marginBottom: 16 }}
+            value={view}
+            onChange={(v) => setView(v as 'jobs' | 'sources')}
+            options={[
+              { value: 'jobs', label: t('Jobs & datasets') },
+              { value: 'sources', label: t('Source datasets') },
+            ]}
+          />
 
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
               <Spin size="large" />
             </div>
+          ) : view === 'sources' ? (
+            <>
+              <Paragraph type="secondary">
+                {t('Datasets written and labelled by people, ready to use as seeds or to measure with. Bundled ones install offline; the others download from Hugging Face when you install them.')}
+              </Paragraph>
+              <SourceCatalog
+                entries={catalog}
+                jobs={jobs}
+                onChanged={() => void load(true)}
+                onView={openRecords}
+                onUseAsSeeds={(n) => useDataset(n, 'expand_seeds')}
+                onUseAsProblems={(n) => useDataset(n, 'reasoning_traces')}
+              />
+            </>
           ) : (
             <>
               {jobs.length > 0 && (
@@ -514,11 +599,13 @@ export function DatagenPage() {
         </Content>
       </Layout>
 
+      <ImportDrawer open={importing} onClose={() => setImporting(false)} onStarted={() => { setView('jobs'); void load(true); }} />
+
       <Drawer
         title={t('New datagen job')}
         open={creating}
         width={560}
-        onClose={() => setCreating(false)}
+        onClose={() => { setCreating(false); setPrefill(undefined); }}
         extra={<Button type="primary" loading={submitting} onClick={() => void submit()}>{t('Start')}</Button>}
       >
         {/* `preserve={false}` plus a remount per pipeline: a field the new
@@ -528,7 +615,7 @@ export function DatagenPage() {
           <Form.Item label={t('Pipeline')}>
             <Select
               value={pipeline}
-              onChange={(v: PipelineName) => setPipeline(v)}
+              onChange={(v: GeneratingPipeline) => setPipeline(v)}
               options={PIPELINES.map((p) => ({ value: p, label: t(p) }))}
             />
           </Form.Item>
