@@ -83,13 +83,15 @@ export interface CatalogEntry {
   license: string;
   attribution: string;
   homepage?: string;
-  source: { bundled?: string; hf?: { dataset: string; config: string; split: string; revision: string } };
+  source: { bundled?: string; url?: string; hf?: { dataset: string; config: string; split: string; revision: string } };
   labelMap?: string;
   flags: NonNullable<Provenance['flags']>;
   notice?: string;
   uses: string[];
   needsConsent: boolean;
   bundled: boolean;
+  /** The Zen Kit that registered this entry; absent for SenClaw's own. */
+  kit?: string | null;
   installed: boolean;
   /** The dataset an install wrote, when installed. */
   dataset?: string | null;

@@ -10,7 +10,8 @@ const { Text, Paragraph } = Typography;
  * The dataset catalog (`GET /api/datagen/catalog`): datasets people wrote,
  * installed with one tap as an `import` job. A bundled entry installs from
  * the binary with no network; a Hugging Face preset downloads its pinned
- * split. An entry whose terms need a decision (share-alike, evaluation
+ * split; an entry a Zen Kit registered (`kit`) downloads from where the kit
+ * points. An entry whose terms need a decision (share-alike, evaluation
  * only) shows its notice and installs only after the person agrees — the
  * daemon refuses it without `acceptLicense`.
  */
@@ -73,7 +74,8 @@ export function SourceCatalog({
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
                 <Space wrap size={4}>
                   <Text strong>{e.title}</Text>
-                  <Tag color={e.bundled ? 'green' : 'blue'}>{e.bundled ? t('Bundled') : 'Hugging Face'}</Tag>
+                  <Tag color={e.bundled ? 'green' : 'blue'}>{e.bundled ? t('Bundled') : e.source.url ? 'URL' : 'Hugging Face'}</Tag>
+                  {e.kit && <Tag color="purple">Kit · {e.kit}</Tag>}
                   <Tag>{t(e.kind)}</Tag>
                   <Tag>{e.lang}</Tag>
                   {e.flags.shareAlike && <Tag color="orange">BY-SA</Tag>}
