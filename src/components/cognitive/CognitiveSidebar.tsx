@@ -23,6 +23,7 @@ import {
   ClusterOutlined,
   BulbOutlined,
   CloudUploadOutlined,
+  FieldTimeOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -30,6 +31,7 @@ const { Text } = Typography;
 export type CognitiveSection =
   | 'search'
   | 'recall'
+  | 'facts'
   | 'ingest'
   | 'explorer'
   | 'datapoints'
@@ -87,6 +89,7 @@ export function CognitiveSidebar({ activeSection, onSelect, refreshKey = 0 }: Pr
   const navItems: NavItem[] = [
     { key: 'search', icon: <SearchOutlined />, label: 'Search & Graph' },
     { key: 'recall', icon: <BulbOutlined />, label: 'Recall (answer)' },
+    { key: 'facts', icon: <FieldTimeOutlined />, label: 'Facts' },
     { key: 'ingest', icon: <CloudUploadOutlined />, label: 'Add knowledge' },
     { key: 'explorer', icon: <ClusterOutlined />, label: 'Graph explorer' },
     { key: 'datapoints', icon: <DatabaseOutlined />, label: 'Data memory' },

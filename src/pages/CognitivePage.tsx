@@ -12,6 +12,7 @@ import {
 } from '../components/cognitive/CognitiveSidebar';
 import { DataPointsView } from '../components/cognitive/DataPointsView';
 import { GraphExplorerView } from '../components/cognitive/GraphExplorerView';
+import { FactsView } from '../components/cognitive/FactsView';
 
 const { Content } = Layout;
 
@@ -705,6 +706,7 @@ export function CognitivePage() {
 
         {section === 'search' && searchSection}
         {section === 'recall' && recallSection}
+        {section === 'facts' && <FactsView onMutated={bumpRefresh} />}
         {section === 'ingest' && ingestSection}
         {section === 'explorer' && <GraphExplorerView />}
         {section === 'datapoints' && datapointsSection}

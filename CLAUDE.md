@@ -144,6 +144,10 @@ the reason there is no i18n library: comment block at the top of
   prose directly with no `t()` at all; leave their existing text as-is and
   route only *new* additions (e.g. the runtime-missing banner) through
   `t()` — do not do a drive-by retrofit of surrounding unrelated strings.
+- **Before adding a key to `vi.web.json`, check `vi.json`.** `vi.web.json` wins on a
+  shared key, so repeating one the generated dictionary already has (`Kind`, `Forget`,
+  `Agent`…) with a different wording silently re-translates every other screen that
+  uses it. Reuse the shared key; add only what is new.
 - Use `tArgs(en, args)` for `{placeholder}` interpolation instead of
   `.replace()` — it is the one substitution mechanism every string goes
   through, and a hand-rolled `.replace()` chain is easy to get wrong when a
