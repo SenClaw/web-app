@@ -26,6 +26,8 @@ export interface MemoryFact {
    * agent (a fact from before chats were told apart).
    */
   origin: string;
+  /** `manual` for a fact a person typed; otherwise what extracted it. Absent from older daemons. */
+  source?: string;
 }
 
 export interface FactBank {

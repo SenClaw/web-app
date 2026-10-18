@@ -90,6 +90,12 @@ export interface WsHook {
   /** Latest arrived dock form — drives the workbench auto-foreground effect. */
   formDockLatest: { jid: string; at: number } | null;
   registerGroup: (data: RegisterGroupPayload) => void;
+  /**
+   * The daemon's reason for the latest refused `register:group` (an archived
+   * project, a kind a project cannot hold…). A chat that was queued behind the
+   * registration never appears, so the caller needs to hear it.
+   */
+  registerError: { message: string; at: number } | null;
   registerFeishuApp: (appId: string, appSecret: string, domain?: string) => void;
   unregisterGroup: (jid: string) => void;
   updateGroup: (jid: string, updates: UpdateGroupPayload) => void;
@@ -222,6 +228,7 @@ export function useWebSocket(): WsHook {
   const [agentUsage, setAgentUsage]           = useState<Record<string, UsageData>>(loadAgentUsage);
   const [coworkChanged, setCoworkChanged]     = useState(0);
   const [lastTaskResult, setLastTaskResult]   = useState<TaskResultEvent | null>(null);
+  const [registerError, setRegisterError] = useState<{ message: string; at: number } | null>(null);
   const [coworkResourceChanged, setCoworkResourceChanged] = useState(0);
   const [spaceEventsRev, setSpaceEventsRev] = useState(0);
   const [plansByJid, setPlansByJid] = useState<Record<string, PlanSummary[]>>({});
@@ -1032,6 +1039,14 @@ export function useWebSocket(): WsHook {
               return prev.some(x => x.jid === g.jid) ? prev.map(x => x.jid === g.jid ? g : x) : [...prev, g];
             });
             break;
+          case 'error': {
+            // Only a refused registration is surfaced; other errors stay in the log.
+            const reason = typeof msg.message === 'string' ? msg.message : '';
+            if (reason.startsWith('register:group failed')) {
+              setRegisterError({ message: reason.replace(/^register:group failed:\s*/, ''), at: Date.now() });
+            }
+            break;
+          }
           case 'group:unregistered':
             setGroups(prev => prev.filter(g => g.jid !== (msg.jid as string)));
             break;
@@ -1488,7 +1503,7 @@ export function useWebSocket(): WsHook {
   }, []);
 
   return useMemo(() => ({
-    status, groups, messages, agentStates, agentCompacting, agentUsage, subscribed, subscribe, refreshGroups, sendMessage, pauseAgent, resumeAgent, stopAgent, stopAndClearHistory, resolvePermission, resolveQuestion, registerGroup, registerFeishuApp, unregisterGroup, updateGroup, dispatchParents, dispatchActivity, agentTodos, subscribeAll, coworkChanged, lastTaskResult, coworkResourceChanged,
+    status, groups, messages, agentStates, agentCompacting, agentUsage, subscribed, subscribe, refreshGroups, sendMessage, pauseAgent, resumeAgent, stopAgent, stopAndClearHistory, resolvePermission, resolveQuestion, registerGroup, registerError, registerFeishuApp, unregisterGroup, updateGroup, dispatchParents, dispatchActivity, agentTodos, subscribeAll, coworkChanged, lastTaskResult, coworkResourceChanged,
     channels, agents, bindings,
     registerChannel, registerAgent, registerBinding,
     unregisterChannel, unregisterAgent, unregisterBinding,
@@ -1503,7 +1518,7 @@ export function useWebSocket(): WsHook {
     workbenchMarkViewed, workbenchClose, workbenchReadFile, workbenchFetchLogs, workbenchSetCurrent,
     resolveForm, formDock, formDockLatest, checkpointTick,
   }), [
-    status, groups, messages, agentStates, agentCompacting, agentUsage, subscribed, subscribe, refreshGroups, sendMessage, pauseAgent, resumeAgent, stopAgent, stopAndClearHistory, resolvePermission, resolveQuestion, registerGroup, registerFeishuApp, unregisterGroup, updateGroup, dispatchParents, dispatchActivity, agentTodos, subscribeAll, coworkChanged, lastTaskResult, coworkResourceChanged,
+    status, groups, messages, agentStates, agentCompacting, agentUsage, subscribed, subscribe, refreshGroups, sendMessage, pauseAgent, resumeAgent, stopAgent, stopAndClearHistory, resolvePermission, resolveQuestion, registerGroup, registerError, registerFeishuApp, unregisterGroup, updateGroup, dispatchParents, dispatchActivity, agentTodos, subscribeAll, coworkChanged, lastTaskResult, coworkResourceChanged,
     channels, agents, bindings,
     registerChannel, registerAgent, registerBinding,
     unregisterChannel, unregisterAgent, unregisterBinding,

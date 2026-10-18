@@ -10,9 +10,12 @@ import {
   CommentOutlined, LinkOutlined, ExclamationCircleOutlined, MenuOutlined,
   AppstoreOutlined, FilterOutlined, ColumnWidthOutlined, LoadingOutlined,
   RobotOutlined, FolderOpenOutlined, ClockCircleOutlined, BlockOutlined,
-  UnlockOutlined, MoreOutlined, SyncOutlined,
+  UnlockOutlined, MoreOutlined, SyncOutlined, ContainerOutlined, LockOutlined,
 } from '@ant-design/icons';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '../components/AppLayout';
+import { useLang } from '../i18n';
+import { useProjects } from '../hooks/useProjects';
 import { WorktreePanel } from '../components/kanban/WorktreePanel';
 
 const { Content } = Layout;
@@ -28,6 +31,10 @@ interface BoardSummary {
   title: string;
   description: string;
   workspace_dir: string;
+  /** The project the board was created in; it cannot change afterwards. */
+  project_id?: string | null;
+  /** Where its cards run: its own folder inside the project, else the root. */
+  effective_workspace_dir?: string | null;
   column_count: number;
   card_count: number;
 }
@@ -61,6 +68,8 @@ interface BoardMeta {
   title: string;
   description: string;
   workspace_dir: string;
+  project_id?: string | null;
+  effective_workspace_dir?: string | null;
 }
 
 interface BoardFull {
@@ -179,7 +188,13 @@ async function api<T = unknown>(path: string, opts?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `HTTP ${res.status}`);
+    // The daemon answers {"error": "..."}; show the sentence, not the JSON.
+    let reason = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === 'string') reason = parsed.error;
+    } catch { /* not JSON: show it as it is */ }
+    throw new Error(reason || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -232,12 +247,25 @@ function PriorityBadge({ priority }: { priority: string }) {
 // Board list view
 // ---------------------------------------------------------------------------
 
+const NO_PROJECT = '__none__';
+
 function BoardListView({
   onSelect,
+  initialProject,
+  openNew,
+  onOpenedNew,
 }: {
   onSelect: (id: number) => void;
+  /** Project to filter by and to start a new board in (a link from its page). */
+  initialProject?: string;
+  openNew?: boolean;
+  onOpenedNew?: () => void;
 }) {
   const { token } = theme.useToken();
+  const { t, tArgs } = useLang();
+  const { projects, byId: projectById } = useProjects('all');
+  const activeProjects = projects.filter(p => p.archivedAt == null);
+  const [projectFilter, setProjectFilter] = useState<string>(initialProject ?? '');
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [templates, setTemplates] = useState<TemplateData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,6 +293,17 @@ function BoardListView({
 
   useEffect(() => { fetchBoards(); }, [fetchBoards]);
 
+  // "New board in this project" from the project's page: open the dialog on it.
+  useEffect(() => {
+    if (!openNew) return;
+    setNewOpen(true);
+    onOpenedNew?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNew]);
+
+  const newProjectId: string | undefined = Form.useWatch('project_id', newForm);
+  const aiProjectId: string | undefined = Form.useWatch('project_id', aiForm);
+
   const handleNewBoard = async () => {
     try {
       const vals = await newForm.validateFields();
@@ -274,7 +313,9 @@ function BoardListView({
         body: JSON.stringify({
           title: vals.title,
           template_id: vals.template_id || undefined,
-          workspace_dir: vals.workspace_dir || undefined,
+          // A board in a project runs in the project's root: no folder of its own here.
+          workspace_dir: vals.project_id ? undefined : vals.workspace_dir || undefined,
+          project_id: vals.project_id || undefined,
           with_defaults: !vals.template_id,
         }),
       });
@@ -298,7 +339,8 @@ function BoardListView({
         body: JSON.stringify({
           goal: vals.goal,
           template_id: vals.template_id || undefined,
-          workspace_dir: vals.workspace_dir || undefined,
+          workspace_dir: vals.project_id ? undefined : vals.workspace_dir || undefined,
+          project_id: vals.project_id || undefined,
         }),
       });
       message.success('AI board generated');
@@ -311,6 +353,12 @@ function BoardListView({
       setCreating(false);
     }
   };
+
+  // Filtering by a project makes it the default home of a new board.
+  const defaultProject = projectFilter && projectFilter !== NO_PROJECT ? projectFilter : undefined;
+  const shownBoards = boards.filter(b =>
+    projectFilter === '' ? true : projectFilter === NO_PROJECT ? !b.project_id : b.project_id === projectFilter,
+  );
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -347,13 +395,30 @@ function BoardListView({
         </Space>
       </div>
 
+      {projects.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <ContainerOutlined style={{ color: token.colorTextSecondary }} />
+          <Select
+            value={projectFilter}
+            onChange={setProjectFilter}
+            style={{ minWidth: 200, maxWidth: '100%' }}
+            aria-label={t('Project')}
+            options={[
+              { value: '', label: t('All projects') },
+              { value: NO_PROJECT, label: t('No project') },
+              ...projects.map(p => ({ value: p.id, label: p.archivedAt != null ? `${p.name} (${t('Archived').toLowerCase()})` : p.name })),
+            ]}
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20"><Spin size="large" /></div>
-      ) : boards.length === 0 ? (
-        <Empty description="No boards yet" />
+      ) : shownBoards.length === 0 ? (
+        <Empty description={boards.length === 0 ? 'No boards yet' : t('No boards match this project filter.')} />
       ) : (
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-          {boards.map(b => (
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))' }}>
+          {shownBoards.map(b => (
             <Card
               key={b.id}
               hoverable
@@ -383,9 +448,16 @@ function BoardListView({
               <div className="flex items-center gap-3 mt-3">
                 <Tag>{b.column_count} columns</Tag>
                 <Tag>{b.card_count} cards</Tag>
-                {b.workspace_dir && (
-                  <Tooltip title={b.workspace_dir}>
+                {(b.effective_workspace_dir || b.workspace_dir) && (
+                  <Tooltip title={b.effective_workspace_dir || b.workspace_dir}>
                     <FolderOpenOutlined style={{ color: token.colorTextSecondary }} />
+                  </Tooltip>
+                )}
+                {b.project_id && (
+                  <Tooltip title={tArgs('Project: {name}', { name: projectById(b.project_id)?.name ?? b.project_id })}>
+                    <Tag icon={<ContainerOutlined />} style={{ margin: 0, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {projectById(b.project_id)?.name ?? b.project_id}
+                    </Tag>
                   </Tooltip>
                 )}
               </div>
@@ -403,7 +475,7 @@ function BoardListView({
         confirmLoading={creating}
         destroyOnClose
       >
-        <Form form={newForm} layout="vertical" preserve={false}>
+        <Form form={newForm} layout="vertical" preserve={false} initialValues={{ project_id: defaultProject }}>
           <Form.Item name="title" label="Title" rules={[{ required: true, message: 'Enter a title' }]}>
             <Input placeholder="Board title" />
           </Form.Item>
@@ -414,9 +486,22 @@ function BoardListView({
               options={templates.map(t => ({ label: t.name, value: t.id }))}
             />
           </Form.Item>
-          <Form.Item name="workspace_dir" label="Workspace directory">
-            <Input placeholder="Optional path" />
+          <Form.Item name="project_id" label={t('Project')} extra={t('The board is created in the project and cannot be moved to another one later.')}>
+            <Select
+              allowClear
+              placeholder={t('No project')}
+              options={activeProjects.map(p => ({ label: p.name, value: p.id }))}
+            />
           </Form.Item>
+          {newProjectId && projectById(newProjectId) ? (
+            <Form.Item label="Workspace directory" extra={t('Cards run in the root folder of the project.')}>
+              <Input disabled prefix={<LockOutlined />} value={projectById(newProjectId)!.root} addonAfter={t('follows the project')} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="workspace_dir" label="Workspace directory">
+              <Input placeholder="Optional path" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -429,7 +514,7 @@ function BoardListView({
         confirmLoading={creating}
         destroyOnClose
       >
-        <Form form={aiForm} layout="vertical" preserve={false}>
+        <Form form={aiForm} layout="vertical" preserve={false} initialValues={{ project_id: defaultProject }}>
           <Form.Item name="goal" label="Goal" rules={[{ required: true, message: 'Describe the goal' }]}>
             <TextArea rows={3} placeholder="Describe what you want to accomplish..." />
           </Form.Item>
@@ -443,9 +528,22 @@ function BoardListView({
               ]}
             />
           </Form.Item>
-          <Form.Item name="workspace_dir" label="Workspace directory">
-            <Input placeholder="Optional path" />
+          <Form.Item name="project_id" label={t('Project')} extra={t('The board is created in the project and cannot be moved to another one later.')}>
+            <Select
+              allowClear
+              placeholder={t('No project')}
+              options={activeProjects.map(p => ({ label: p.name, value: p.id }))}
+            />
           </Form.Item>
+          {aiProjectId && projectById(aiProjectId) ? (
+            <Form.Item label="Workspace directory" extra={t('Cards run in the root folder of the project.')}>
+              <Input disabled prefix={<LockOutlined />} value={projectById(aiProjectId)!.root} addonAfter={t('follows the project')} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="workspace_dir" label="Workspace directory">
+              <Input placeholder="Optional path" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>
@@ -465,6 +563,8 @@ function BoardView({
 }) {
   const { token } = theme.useToken();
   const [board, setBoard] = useState<BoardFull | null>(null);
+  const { byId: projectOf } = useProjects('all');
+  const boardProject = projectOf(board?.meta.project_id);
   const [loading, setLoading] = useState(true);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [templates, setTemplates] = useState<TemplateData[]>([]);
@@ -847,12 +947,24 @@ function BoardView({
             {board.meta.description && (
               <Text type="secondary" className="text-xs">{board.meta.description}</Text>
             )}
+            {/* Under the title, not beside it: the header is already full of controls. */}
+            {((board.meta.effective_workspace_dir || board.meta.workspace_dir) || board.meta.project_id) && (
+              <div className="flex items-center flex-wrap gap-y-1 mt-1">
+                {(board.meta.effective_workspace_dir || board.meta.workspace_dir) && (
+                  <Tooltip title={board.meta.effective_workspace_dir || board.meta.workspace_dir}>
+                    <Tag icon={<FolderOpenOutlined />}>{(board.meta.effective_workspace_dir || board.meta.workspace_dir).split('/').pop()}</Tag>
+                  </Tooltip>
+                )}
+                {board.meta.project_id && (
+                  <Link to={`/projects/${board.meta.project_id}`}>
+                    <Tag icon={<ContainerOutlined />} color="blue" style={{ cursor: 'pointer' }}>
+                      {boardProject?.name ?? board.meta.project_id}
+                    </Tag>
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
-          {board.meta.workspace_dir && (
-            <Tooltip title={board.meta.workspace_dir}>
-              <Tag icon={<FolderOpenOutlined />} className="ml-2">{board.meta.workspace_dir.split('/').pop()}</Tag>
-            </Tooltip>
-          )}
         </div>
 
         <Space>
@@ -952,7 +1064,7 @@ function BoardView({
         <CardDetailModal
           cardId={cardDetailId}
           personas={personas}
-          repo={board.meta.workspace_dir || null}
+          repo={board.meta.effective_workspace_dir || board.meta.workspace_dir || null}
           onClose={() => { setCardDetailId(null); fetchBoard(); }}
         />
       )}
@@ -1407,15 +1519,34 @@ function CardDetailModal({
 // ---------------------------------------------------------------------------
 
 export function KanbanPage() {
-  const [boardId, setBoardId] = useState<number | null>(null);
+  // /kanban?board=<id> opens a board; ?project=<id>&new=1 opens the new-board
+  // dialog on that project (links from a project's page).
+  const [params, setParams] = useSearchParams();
+  const [boardId, setBoardId] = useState<number | null>(() => {
+    const n = Number(params.get('board'));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  });
+  const openNew = params.get('new') === '1';
+  const projectParam = params.get('project') ?? undefined;
+
+  const dropParams = (...keys: string[]) => {
+    const next = new URLSearchParams(params);
+    for (const k of keys) next.delete(k);
+    setParams(next, { replace: true });
+  };
 
   return (
     <AppLayout sidebar={null}>
       <Content className="h-full overflow-hidden">
         {boardId === null ? (
-          <BoardListView onSelect={setBoardId} />
+          <BoardListView
+            onSelect={setBoardId}
+            initialProject={projectParam}
+            openNew={openNew}
+            onOpenedNew={() => dropParams('new')}
+          />
         ) : (
-          <BoardView boardId={boardId} onBack={() => setBoardId(null)} />
+          <BoardView boardId={boardId} onBack={() => { setBoardId(null); dropParams('board'); }} />
         )}
       </Content>
     </AppLayout>

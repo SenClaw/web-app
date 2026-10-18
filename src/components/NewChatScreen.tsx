@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { theme, Input, message, Select, Segmented, Dropdown, Modal } from 'antd';
+import { theme, Input, message, Select, Segmented, Dropdown, Modal, Tooltip } from 'antd';
 import { WorkflowQuickStart } from './WorkflowQuickStart';
 import { useCommandSuggestions } from './chat-common';
 import type { MenuProps } from 'antd';
@@ -7,8 +7,12 @@ import {
   FolderOpenOutlined,
   UserOutlined, ThunderboltOutlined, BulbOutlined, ApartmentOutlined,
   CheckOutlined, FolderAddOutlined, FolderOutlined, SearchOutlined, MinusCircleOutlined,
+  ContainerOutlined, LockOutlined,
 } from '@ant-design/icons';
 import type { AgentInfo } from '../types';
+import { useLang } from '../i18n';
+import { useProjects } from '../hooks/useProjects';
+import { kindCanJoinProject, rootLabel } from '../lib/projectsApi';
 
 export type ChatType = 'Agent' | 'Plan' | 'DAG';
 
@@ -22,6 +26,8 @@ export interface StartChatOptions {
   chatType: ChatType;
   /** New: 'code' chats are tied to a workspace folder; 'chat' has no folder. */
   kind: ChatKind;
+  /** Create the chat in this project; its root is then the working folder. */
+  projectId?: string;
 }
 
 interface Props {
@@ -32,6 +38,8 @@ interface Props {
   /** Select a workflow "session" (wfrun:<id>) in the chat surface after a
    *  run started from the quick-start — keeps the user in Chat. */
   onWorkflowRunSelected?: (jid: string) => void;
+  /** Start with this project picked (a link from the project's page). */
+  defaultProjectId?: string;
 }
 
 const CHAT_SUGGESTIONS = [
@@ -111,8 +119,11 @@ async function pickFolderNative(): Promise<string | null> {
   return null;
 }
 
-export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSelected }: Props) {
+export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSelected, defaultProjectId }: Props) {
   const { token } = theme.useToken();
+  const { t, tArgs } = useLang();
+  const { projects, loaded: projectsLoaded } = useProjects('false');
+  const [projectId, setProjectId] = useState<string>(defaultProjectId ?? '');
   const [input, setInput] = useState('');
   const [workDir, setWorkDir] = useState('');
   const [profileId, setProfileId] = useState<number | undefined>(undefined);
@@ -124,6 +135,18 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
   // 'workflow' is not a chat kind — it swaps the composer for the workflow
   // quick-start (pick & run, or create with the agent).
   const [kind, setKind] = useState<ChatKind | 'workflow'>('chat');
+  // A project can hold chat and code sessions only; the picker is hidden for
+  // anything else (the workflow quick-start never creates a project session).
+  const canPickProject = kindCanJoinProject(kind);
+  const project = canPickProject ? projects.find(p => p.id === projectId) : undefined;
+  // The link that asked for a project can arrive after this screen mounted.
+  useEffect(() => {
+    if (defaultProjectId) setProjectId(defaultProjectId);
+  }, [defaultProjectId]);
+  // A project that is archived or gone since the link was made is not offered.
+  useEffect(() => {
+    if (projectsLoaded && projectId && !projects.some(p => p.id === projectId)) setProjectId('');
+  }, [projectsLoaded, projects, projectId]);
   // Project-picker dropdown + path modal (Codex-style flow).
   //   - `pickerSearch` filters the recent-projects list.
   //   - `pathModalMode` opens a small modal for either creating a new folder
@@ -316,24 +339,27 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
   const suggest = useCommandSuggestions({
     value: input,
     onChange: setInput,
-    fileScope: kind === 'code' && workDir ? { path: workDir } : undefined,
+    fileScope: project ? { path: project.root } : kind === 'code' && workDir ? { path: workDir } : undefined,
   });
 
   const handleSubmit = () => {
     const text = input.trim();
     if (!text || kind === 'workflow') return;
+    if (project && !project.rootExists) return;
     if (workDir) {
       pushRecentPath(workDir);
       setRecentPaths(loadRecentPaths());
     }
     onStart({
       message: text,
-      // Workspace is only relevant for code chats — plain chats ignore it.
-      workDir: kind === 'code' ? (workDir || undefined) : undefined,
+      // Workspace is only relevant for code chats — plain chats ignore it. A
+      // project fixes the folder: its root.
+      workDir: project ? undefined : kind === 'code' ? (workDir || undefined) : undefined,
       profileId,
       modelId,
       chatType,
       kind,
+      projectId: project?.id,
     });
   };
 
@@ -388,12 +414,16 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
   const heading =
     kind === 'workflow'
       ? 'Chạy một workflow'
+      : project
+      ? (kind === 'code' ? tArgs('What should we build in {name}?', { name: project.name }) : tArgs('Chat in {name}', { name: project.name }))
       : kind === 'code'
       ? (workDirBasename ? `What should we build in ${workDirBasename}?` : 'Pick a workspace folder to start')
       : (selectedProfile ? `Chat with ${selectedProfile.name}` : 'How can I help today?');
   const subheading =
     kind === 'workflow'
       ? 'Chọn quy trình có sẵn, hoặc mô tả để AI agent tạo mới rồi chạy ngay.'
+      : project
+      ? tArgs('Works in {root}', { root: project.root })
       : kind === 'code'
       ? (workDirBasename ? '' : 'Click "Folder" below to choose your project root.')
       : 'No workspace needed — just a conversation.';
@@ -474,14 +504,46 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
 
           {/* Toolbar row */}
           <div
-            className="flex items-center gap-1.5 px-2 py-1.5"
+            className="flex items-center flex-wrap gap-1.5 px-2 py-1.5"
             style={{ borderTop: `1px solid ${token.colorBorderSecondary}` }}
           >
             {/* Folder pill — only meaningful for Code chats. Codex-style
                 dropdown: search + recent projects + "Add new project" submenu
                 (Start from scratch / Use an existing folder) + "Don't work in
                 a project". Selection sets workDir and closes the dropdown. */}
-            {kind === 'code' && (
+            {/* SenClaw project: its root becomes the working folder, locked. */}
+            {canPickProject && (
+              <Select
+                size="small"
+                variant="borderless"
+                value={project ? project.id : ''}
+                onChange={(v: string) => setProjectId(v)}
+                loading={!projectsLoaded}
+                popupMatchSelectWidth={false}
+                style={{ flex: '0 1 auto', minWidth: 110, maxWidth: 180 }}
+                suffixIcon={<ContainerOutlined style={{ fontSize: 11 }} />}
+                aria-label={t('Project')}
+                options={[
+                  { value: '', label: t('No project') },
+                  ...projects.map(p => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            )}
+
+            {project && (
+              <Tooltip title={`${project.root} — ${t('The folder comes from the project and cannot be changed here.')}`}>
+                <span
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs"
+                  style={{ color: token.colorPrimary, background: `${token.colorPrimary}10` }}
+                  data-testid="project-root-pill"
+                >
+                  <LockOutlined style={{ fontSize: 11 }} />
+                  <span className="truncate" style={{ maxWidth: 140 }}>{rootLabel(project.root)}</span>
+                </span>
+              </Tooltip>
+            )}
+
+            {kind === 'code' && !project && (
               <Dropdown
                 trigger={['click']}
                 menu={{ items: projectMenuItems }}
@@ -507,7 +569,7 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
               </Dropdown>
             )}
 
-            {kind === 'code' && (
+            {(kind === 'code' || canPickProject) && (
               <span style={{ width: 1, height: 16, background: token.colorBorderSecondary }} />
             )}
 
@@ -559,7 +621,7 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!input.trim()}
+              disabled={!input.trim() || (project !== undefined && !project.rootExists)}
               className="w-8 h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0"
               style={{
                 background: input.trim() ? token.colorPrimary : token.colorFillSecondary,
@@ -578,6 +640,12 @@ export function NewChatScreen({ onStart, projectName, profiles, onWorkflowRunSel
           </div>
         </div>
         </div>
+
+        {project && !project.rootExists && (
+          <div className="mt-3 text-xs text-center" style={{ color: token.colorError }}>
+            {t('The root folder of this project no longer exists. Fix it in the project, then start the chat.')}
+          </div>
+        )}
 
         {/* Suggestions */}
         <div className="flex flex-wrap gap-2 mt-5 justify-center">

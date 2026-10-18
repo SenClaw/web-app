@@ -13,7 +13,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, Popconfirm, Select, Space, Switch, Table, Tag, Tooltip, message, theme } from 'antd';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import { useLang } from '../../i18n';
+import { useProjects } from '../../hooks/useProjects';
+import { projectIdOfBank } from '../../lib/projectsApi';
 import {
   FactStoreNotStarted,
   factWhen,
@@ -32,6 +35,8 @@ interface Props {
 export function FactsView({ onMutated }: Props) {
   const { token } = theme.useToken();
   const { t, tArgs } = useLang();
+  // Archived projects keep their facts, so name every project, not only active ones.
+  const { byId: projectOf } = useProjects('all');
 
   const [banks, setBanks] = useState<FactBank[] | null>(null);
   const [bank, setBank] = useState<string | null>(null);
@@ -114,6 +119,13 @@ export function FactsView({ onMutated }: Props) {
                 {f.text}
               </div>
               <div style={{ marginTop: 4 }}>
+                {f.source === 'manual' && (
+                  <Tooltip title={t('Typed by hand. Nothing a chat says replaces it.')}>
+                    <Tag color="green" style={{ fontSize: 11 }}>
+                      {t('typed by hand')}
+                    </Tag>
+                  </Tooltip>
+                )}
                 {replaced && (
                   <Tooltip title={t('The person changed their mind; the newer fact replaced this one. Forgetting the newer fact brings this one back.')}>
                     <Tag color="orange">{t('replaced')}</Tag>
@@ -193,6 +205,15 @@ export function FactsView({ onMutated }: Props) {
   );
 
   const current = banks?.find(b => b.bank === bank);
+  const currentProjectId = bank ? projectIdOfBank(bank) : null;
+
+  /** A project's bank reads as the project's name; an agent's bank as its folder. */
+  const bankLabel = (b: FactBank): string => {
+    const pid = projectIdOfBank(b.bank);
+    const name = pid ? (projectOf(pid)?.name ?? pid) : b.bank;
+    const prefix = pid ? `${t('Project')}: ` : '';
+    return `${prefix}${name} · ${b.current}${b.replaced > 0 ? ` (+${b.replaced})` : ''}`;
+  };
 
   return (
     <Card
@@ -219,6 +240,18 @@ export function FactsView({ onMutated }: Props) {
 
       {notStarted && <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t('The fact store has not started yet — try again in a moment.')} />}
 
+      {currentProjectId && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={tArgs('These are the facts of the project "{name}".', { name: projectOf(currentProjectId)?.name ?? currentProjectId })}
+          description={
+            <Link to={`/projects/${encodeURIComponent(currentProjectId)}?tab=facts`}>{t('Add or manage them in the project')}</Link>
+          }
+        />
+      )}
+
       <Space wrap style={{ marginBottom: 12 }}>
         <Select
           style={{ minWidth: 240 }}
@@ -230,10 +263,7 @@ export function FactsView({ onMutated }: Props) {
             setSubmitted('');
             setQuery('');
           }}
-          options={(banks ?? []).map(b => ({
-            value: b.bank,
-            label: `${b.bank} · ${b.current}${b.replaced > 0 ? ` (+${b.replaced})` : ''}`,
-          }))}
+          options={(banks ?? []).map(b => ({ value: b.bank, label: bankLabel(b) }))}
           notFoundContent={t('No agent has facts yet')}
         />
         <Input.Search

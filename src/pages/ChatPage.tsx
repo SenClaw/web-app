@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ImageAttachment } from '../types';
-import { Layout } from 'antd';
+import { Layout, message } from 'antd';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
+import { useLang } from '../i18n';
 import { AppLayout } from '../components/AppLayout';
 import { SessionList } from '../components/Sidebar';
 import { ChatView } from '../components/ChatView';
@@ -22,8 +23,11 @@ function savePinned(s: Set<string>) {
 
 export function ChatPage() {
   const { ws } = useAppContext();
+  const { t, tArgs } = useLang();
   const [selectedJid, setSelectedJid] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
+  // The project a "new chat in this project" link asked for; the screen starts on it.
+  const [newChatProjectId, setNewChatProjectId] = useState<string | undefined>(undefined);
   const [pinnedJids, setPinnedJids] = useState<Set<string>>(loadPinned);
   const [searchParams, setSearchParams] = useSearchParams();
   // Path-style deep link: /chat/:jid — fastest entry, no query parsing.
@@ -52,7 +56,7 @@ export function ChatPage() {
   // Without this guard, opening /chat/cowork:abc races: groups arrive →
   // this effect fires first → picks groups[0] → routeJid effect can't
   // override (selectedJid already set), so the user lands on the wrong chat.
-  const pendingDeepLink = routeJid ?? searchParams.get('jid');
+  const pendingDeepLink = routeJid ?? searchParams.get('jid') ?? searchParams.get('newProject');
   useEffect(() => {
     if (pendingDeepLink) return;
     if (!selectedJid && !showNewChat && ws.groups.length > 0) {
@@ -70,6 +74,19 @@ export function ChatPage() {
     ws.setActiveJid(isWorkflowSession ? null : selectedJid);
   }, [selectedJid, isWorkflowSession, ws.setActiveJid]);
 
+  // /chats?newProject=<id> (from a project's page) opens the new-chat screen on that project.
+  useEffect(() => {
+    const id = searchParams.get('newProject');
+    if (!id) return;
+    setNewChatProjectId(id);
+    setShowNewChat(true);
+    setSelectedJid(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('newProject');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleSelect = (jid: string) => {
     setSelectedJid(jid);
     setShowNewChat(false);
@@ -77,6 +94,7 @@ export function ChatPage() {
   };
 
   const handleNewChat = () => {
+    setNewChatProjectId(undefined);
     setShowNewChat(true);
     setSelectedJid(null);
   };
@@ -123,6 +141,26 @@ export function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws.groups]);
 
+  // A registration the daemon refused never reaches `ws.groups`, so the chat
+  // queued behind it would wait forever. Say why and go back to the screen.
+  useEffect(() => {
+    const err = ws.registerError;
+    if (!err || !pendingNewChat.current) return;
+    pendingNewChat.current = null;
+    // The daemon words a refusal in English only; the ones a person can reach
+    // from the screen are translated, any other is shown as it came.
+    const reason =
+      err.message === 'the project is archived and takes no new sessions'
+        ? t('the project is archived and takes no new sessions')
+        : err.message === 'no such project'
+          ? t('no such project')
+          : err.message;
+    message.error(tArgs('The chat could not be created: {error}', { error: reason }));
+    setShowNewChat(true);
+    setSelectedJid(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws.registerError?.at]);
+
   const handleStartChat = (opts: StartChatOptions) => {
     // 1. Resolve which profile (agent.folder) owns the new chat.
     //    Priority: explicit profileId → first non-schedule agent → 'main'.
@@ -167,8 +205,10 @@ export function ChatPage() {
       groupType: opts.kind === 'code' ? 'code' : 'chat',
       requiresTrigger: false,
       // Workspace only applies to code chats — never restrict a plain chat.
-      allowedWorkDirs: opts.kind === 'code' && opts.workDir ? [opts.workDir] : null,
+      // A chat in a project works in the project's root; the daemon sets that.
+      allowedWorkDirs: opts.projectId ? null : opts.kind === 'code' && opts.workDir ? [opts.workDir] : null,
       modelId: opts.modelId || null,
+      ...(opts.projectId ? { projectId: opts.projectId } : {}),
     });
 
     // 5. Queue the message to fire once the group lands in ws.groups.
@@ -228,6 +268,7 @@ export function ChatPage() {
             {showNewChat ? (
               <NewChatScreen
                 onStart={handleStartChat}
+                defaultProjectId={newChatProjectId}
                 // Pass the first non-schedule profile name as a friendly default.
                 projectName={(ws.agents.find(a => !a.folder.startsWith('schedule_')) ?? ws.agents[0])?.name}
                 profiles={ws.agents.filter(a => !a.folder.startsWith('schedule_'))}

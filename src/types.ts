@@ -15,6 +15,8 @@ export interface GroupInfo {
   channelId?: number;
   /** Last chat message/agent response time (ms since epoch), from the server. */
   lastActivity?: number | null;
+  /** The project the chat was created in; fixed for the chat's life. */
+  projectId?: string | null;
 }
 
 export interface RegisterGroupPayload {
@@ -29,6 +31,11 @@ export interface RegisterGroupPayload {
   allowedWorkDirs?: string[] | null;
   /** Per-group LLM override (id of an entry in the global LLM config list). */
   modelId?: string | null;
+  /**
+   * Create the chat in this project. Only at creation: the daemon refuses to
+   * change or drop it later, and accepts it only for web-only chat / code.
+   */
+  projectId?: string;
 }
 
 export interface UpdateGroupPayload {

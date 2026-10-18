@@ -16,6 +16,7 @@ import { WorkflowRunsPage } from './pages/WorkflowRunsPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { BackgroundPage } from './pages/BackgroundPage';
 import { DatagenPage } from './pages/DatagenPage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { PlanExitDialog } from './components/PlanExitDialog';
 import { LangProvider } from './i18n';
 
@@ -81,6 +82,8 @@ export function App() {
           <Route path="cowork/:id" element={<CoworkTeamDetailPage />} />
           <Route path="cognitive" element={<CognitivePage />} />
           <Route path="kanban" element={<KanbanPage />} />
+          <Route path="projects" element={<ProjectsPage />} />
+          <Route path="projects/:id" element={<ProjectsPage />} />
           <Route path="usage" element={<UsagePage />} />
           <Route path="workflows/runs" element={<WorkflowRunsPage />} />
           <Route path="background" element={<BackgroundPage />} />

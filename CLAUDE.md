@@ -153,6 +153,39 @@ the reason there is no i18n library: comment block at the top of
   through, and a hand-rolled `.replace()` chain is easy to get wrong when a
   placeholder repeats or a value itself contains `{`.
 
+## Projects
+
+A project is a folder (its root) that chats and kanban boards work in, with a
+context text and facts of its own. `src/lib/projectsApi.ts` is the one module
+that knows `/api/projects*`; the screens are `pages/ProjectsPage.tsx` +
+`components/projects/`, and `hooks/useProjects.ts` keeps the list fresh.
+
+- **The daemon pushes no event when a project changes.** Refresh after what
+  this window did and when it gets focus back (`useProjects`, and the detail
+  page's own focus listener). Two windows disagree until their next refresh.
+- **A chat joins a project only when it is created** (`registerGroup({projectId})`
+  from `NewChatScreen`). Never add "move to project" or "remove from project":
+  the daemon refuses `update:group` that changes or drops `projectId`, and only
+  web-only `chat`/`code` chats may belong (`kindCanJoinProject`). A refused
+  `register:group` comes back as a WS `error`, which `useWebSocket` exposes as
+  `registerError` so `ChatPage` can say why instead of waiting for a chat that
+  never appears. The same goes for a board: its project is chosen at creation.
+- **The context is saved with the `updatedAt` it was read at.** A stale save is
+  a `409 context_changed` that carries the stored text (`ContextChangedError`):
+  show both and let the person choose (`ProjectContextTab`) — never retry it
+  silently, which would overwrite an edit made elsewhere.
+- **Deleting for good is slow.** `DELETE ?purge=true` answers only after the
+  project's fact bank is gone (about 23 s for 20,000 facts), so `purgeProject`
+  has a 10-minute timeout and `DeleteProjectModal` cannot be closed while it
+  runs. Archiving is the reversible one; it keeps every chat and board.
+- **A project's root is the working folder, read-only.** `NewChatScreen` and
+  the kanban dialogs lock the folder once a project is chosen; a board shows
+  `effective_workspace_dir` (its own folder inside the root, else the root).
+- **The session list's `Project` grouping means the project entity** (`by-project`);
+  grouping by the agent profile's folder is `folder` (what `project` used to
+  mean there — a stored `project` still loads as `folder`).
+- Fact banks named `project:<id>` are shown by the project's name (`FactsView`).
+
 ## Cross-client parity
 
 Web, desktop (`../desktop`, Flutter) and mobile are meant to be the same

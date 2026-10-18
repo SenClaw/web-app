@@ -32,11 +32,14 @@ import {
   ReloadOutlined,
   ControlOutlined,
   SortAscendingOutlined,
+  ContainerOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { WsStatus, EventNotification, GroupInfo } from '../types';
 import { WorkflowSidebarSection } from './workflows/WorkflowSidebarSection';
 import { useLang } from '../i18n';
+import { useProjects } from '../hooks/useProjects';
+import type { Project } from '../lib/projectsApi';
 
 const { Sider } = Layout;
 
@@ -75,6 +78,7 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
   const isSpace     = location.pathname.startsWith('/space');
   const isCowork    = location.pathname.startsWith('/cowork');
   const isKanban    = location.pathname.startsWith('/kanban');
+  const isProjects  = location.pathname.startsWith('/projects');
 
   const notifContent = (
     <div style={{ width: 300, maxHeight: 400, overflowY: 'auto' }}>
@@ -164,6 +168,9 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
           <Tooltip title={t('Kanban')}>
             <Button type={isKanban ? 'primary' : 'text'} icon={<ProjectOutlined style={{ fontSize: 16 }} />} onClick={() => navigate('/kanban')} className="flex-1" style={{ height: 38, borderRadius: 10 }} />
           </Tooltip>
+          <Tooltip title={t('Projects')}>
+            <Button type={isProjects ? 'primary' : 'text'} icon={<ContainerOutlined style={{ fontSize: 16 }} />} onClick={() => navigate('/projects')} className="flex-1" style={{ height: 38, borderRadius: 10 }} />
+          </Tooltip>
         </div>
 
         {/* Session list injected by ChatPage */}
@@ -204,25 +211,33 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
 
 const ACTIVE_STATES = new Set(['thinking', 'executing', 'processing', 'waiting_permission', 'waiting_question']);
 
-/** Sidebar "Group by" axis: bucket by project folder, by date, or not at all. */
-export type GroupMode = 'project' | 'date' | 'none';
+/**
+ * Sidebar "Group by" axis: by SenClaw project, by the agent profile's folder,
+ * by date, or not at all.
+ */
+export type GroupMode = 'by-project' | 'folder' | 'date' | 'none';
 /** Sidebar "Sort by" axis: last activity, creation time, or name A–Z. */
 export type SortMode = 'created' | 'updated' | 'name';
 
 const ORGANIZE_KEY = 'senclaw:sessionlist-organize';
 const SORT_KEY = 'senclaw:sessionlist-sort';
 
-function loadGroupMode(): GroupMode {
+/**
+ * The saved choice, or `null` when the person never chose: the list then
+ * groups by project as soon as one chat belongs to a project, and by folder
+ * (the way it always did) while none does.
+ */
+function loadGroupMode(): GroupMode | null {
   try {
     const v = localStorage.getItem(ORGANIZE_KEY);
-    if (v === 'project' || v === 'date' || v === 'none') return v;
-    // Legacy 4-way organize values ('project-recent' collapses into 'project'
-    // — bucket order now follows the sort mode).
-    if (v === 'project-recent') return 'project';
+    if (v === 'by-project' || v === 'folder' || v === 'date' || v === 'none') return v;
+    // 'project' was this list's name for grouping by the profile folder, before
+    // projects existed as something of their own; so were the older spellings.
+    if (v === 'project' || v === 'project-recent') return 'folder';
     if (v === 'chronological') return 'date';
     if (v === 'flat') return 'none';
   } catch {}
-  return 'project';
+  return null;
 }
 function saveGroupMode(m: GroupMode) { try { localStorage.setItem(ORGANIZE_KEY, m); } catch {} }
 
@@ -270,7 +285,8 @@ export function SessionList({ groups, selectedJid, agentStates, pinnedJids, onSe
   const { t } = useLang();
   const [renamingJid, setRenamingJid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode);
+  const [chosenMode, setGroupModeState] = useState<GroupMode | null>(loadGroupMode);
+  const { byId: projectById } = useProjects('all');
   const [sort, setSort] = useState<SortMode>(loadSort);
   // collapseSignal/expandSignal are bumped from the menu to broadcast
   // "collapse all" / "expand all" intents to <SessionGroups/>.
@@ -295,6 +311,7 @@ export function SessionList({ groups, selectedJid, agentStates, pinnedJids, onSe
   const pinned   = groups.filter(g => pinnedJids.has(g.jid));
   const unpinned = groups.filter(g => !pinnedJids.has(g.jid));
 
+  const groupMode: GroupMode = chosenMode ?? (groups.some(g => g.projectId) ? 'by-project' : 'folder');
   const setGroupMode = (m: GroupMode) => { setGroupModeState(m); saveGroupMode(m); };
   const setSortMode  = (m: SortMode) => { setSort(m); saveSort(m); };
 
@@ -416,7 +433,7 @@ export function SessionList({ groups, selectedJid, agentStates, pinnedJids, onSe
           className="text-[10px] font-semibold tracking-widest uppercase flex-1"
           style={{ color: token.colorTextTertiary }}
         >
-          {groupMode === 'none' ? 'Sessions' : groupMode === 'date' ? 'Chats' : 'Projects'}
+          {groupMode === 'none' ? t('Sessions') : groupMode === 'date' ? t('Chats') : groupMode === 'folder' ? t('Profile folders') : t('Projects')}
         </span>
         <Tooltip title={t('Collapse all')}>
           <Button
@@ -437,7 +454,8 @@ export function SessionList({ groups, selectedJid, agentStates, pinnedJids, onSe
                 type: 'group' as const,
                 label: t('Group by'),
                 children: [
-                  { key: 'g-project', label: t('Project'),      icon: <FolderOutlined />,      onClick: () => setGroupMode('project'), extra: groupMode === 'project' ? <CheckOutlined /> : undefined },
+                  { key: 'g-project', label: t('Project'),      icon: <ContainerOutlined />,   onClick: () => setGroupMode('by-project'), extra: groupMode === 'by-project' ? <CheckOutlined /> : undefined },
+                  { key: 'g-folder',  label: t('Profile folder'), icon: <FolderOutlined />,    onClick: () => setGroupMode('folder'),  extra: groupMode === 'folder'  ? <CheckOutlined /> : undefined },
                   { key: 'g-date',    label: t('Date'),       icon: <ClockCircleOutlined />, onClick: () => setGroupMode('date'),    extra: groupMode === 'date'    ? <CheckOutlined /> : undefined },
                   { key: 'g-none',    label: t('No grouping'), icon: <MenuOutlined />,        onClick: () => setGroupMode('none'),    extra: groupMode === 'none'    ? <CheckOutlined /> : undefined },
                 ],
@@ -475,6 +493,7 @@ export function SessionList({ groups, selectedJid, agentStates, pinnedJids, onSe
         collapseSignal={collapseSignal}
         expandSignal={expandSignal}
         renderItem={renderItem}
+        projectOf={projectById}
         token={token}
       />
     </div>
@@ -496,9 +515,22 @@ function saveCollapsed(s: Set<string>) {
 // These labels reach `t()` through a variable, so the coverage check cannot
 // see them as literals. Declaring them keeps their translations from being
 // reported as orphans and deleted.
-// i18n-dynamic: Sessions, Older, Today, Yesterday, Previous 7 days, Previous 30 days
-function bucketKey(g: GroupInfo, mode: GroupMode, ts: number): { key: string; label: string } {
-  if (mode === 'project') {
+// i18n-dynamic: Sessions, Older, Today, Yesterday, Previous 7 days, Previous 30 days, No project
+const NO_PROJECT_KEY = '__no-project__';
+
+function bucketKey(
+  g: GroupInfo,
+  mode: GroupMode,
+  ts: number,
+  projectOf: (id: string | null | undefined) => Project | undefined,
+): { key: string; label: string } {
+  if (mode === 'by-project') {
+    if (!g.projectId) return { key: NO_PROJECT_KEY, label: 'No project' };
+    // A chat whose project is not in the list (still loading, or removed) keeps
+    // a bucket of its own under the id rather than vanishing into "No project".
+    return { key: g.projectId, label: projectOf(g.projectId)?.name ?? g.projectId };
+  }
+  if (mode === 'folder') {
     const f = g.folder || '(unknown)';
     return { key: f, label: f };
   }
@@ -525,7 +557,7 @@ const CHRONO_ORDER: Record<string, number> = {
 };
 
 function SessionGroups({
-  groups, groupMode, sort, collapseSignal, expandSignal, renderItem, token,
+  groups, groupMode, sort, collapseSignal, expandSignal, renderItem, projectOf, token,
 }: {
   groups: GroupInfo[];
   groupMode: GroupMode;
@@ -533,6 +565,7 @@ function SessionGroups({
   collapseSignal: number;
   expandSignal: number;
   renderItem: (g: GroupInfo) => React.ReactNode;
+  projectOf: (id: string | null | undefined) => Project | undefined;
   token: ReturnType<typeof theme.useToken>['token'];
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
@@ -544,7 +577,7 @@ function SessionGroups({
   const buckets = new Map<string, Bucket>();
   for (const g of groups) {
     const ts = itemTimestamp(g, sort);
-    const { key, label } = bucketKey(g, groupMode, ts);
+    const { key, label } = bucketKey(g, groupMode, ts, projectOf);
     let b = buckets.get(key);
     if (!b) { b = { key, label, items: [], maxTs: 0 }; buckets.set(key, b); }
     b.items.push(g);
@@ -563,12 +596,18 @@ function SessionGroups({
   // Bucket order depends on group mode:
   //   date    → canonical today / yesterday / past7 / past30 / older
   //   none    → single bucket, no sort needed
-  //   project → follows the sort mode: A–Z for name, else freshest bucket first
+  //   folder / by-project → follows the sort mode: A–Z for name, else freshest
+  //     bucket first; "No project" always comes after the projects
   const sorted = [...buckets.values()].sort((a, b) => {
     switch (groupMode) {
       case 'date': return (CHRONO_ORDER[a.key] ?? 99) - (CHRONO_ORDER[b.key] ?? 99);
       case 'none': return 0;
-      case 'project':
+      case 'by-project':
+        if (a.key === NO_PROJECT_KEY || b.key === NO_PROJECT_KEY) {
+          return a.key === NO_PROJECT_KEY ? (b.key === NO_PROJECT_KEY ? 0 : 1) : -1;
+        }
+        return sort === 'name' ? a.label.localeCompare(b.label) : b.maxTs - a.maxTs;
+      case 'folder':
       default:
         return sort === 'name' ? a.label.localeCompare(b.label) : b.maxTs - a.maxTs;
     }
@@ -623,7 +662,9 @@ function SessionGroups({
       {sorted.map(b => {
         const collapsedKey = `${groupMode}:${b.key}`;
         const isCollapsed = collapsed.has(collapsedKey);
-        const isProjectMode = groupMode === 'project';
+        // A bucket named after data (a profile folder, a project) is shown as it
+        // is: translating it would rename the person's own folder or project.
+        const isDataLabel = groupMode === 'folder' || (groupMode === 'by-project' && b.key !== NO_PROJECT_KEY);
         return (
           <div key={collapsedKey} className="mt-1">
             <button
@@ -635,16 +676,14 @@ function SessionGroups({
               {isCollapsed
                 ? <RightOutlined style={{ fontSize: 8, color: token.colorTextTertiary }} />
                 : <DownOutlined  style={{ fontSize: 8, color: token.colorTextTertiary }} />}
-              {isProjectMode && <FolderOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />}
+              {groupMode === 'folder' && <FolderOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />}
+              {groupMode === 'by-project' && b.key !== NO_PROJECT_KEY && <ContainerOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />}
               <span
                 className="text-[10px] font-semibold tracking-widest uppercase truncate flex-1"
                 style={{ color: token.colorTextTertiary }}
-                title={isProjectMode ? b.label : t(b.label)}
+                title={isDataLabel ? b.label : t(b.label)}
               >
-                {/* A project bucket is a folder name, which is data, not a
-                    UI string — translating it would rename the user's folder
-                    on screen. */}
-                {isProjectMode ? b.label : t(b.label)}
+                {isDataLabel ? b.label : t(b.label)}
               </span>
               <span className="text-[10px]" style={{ color: token.colorTextQuaternary }}>
                 {b.items.length}
