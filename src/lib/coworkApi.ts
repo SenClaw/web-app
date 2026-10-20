@@ -33,7 +33,36 @@ export interface SenLinkPeer {
   assignee: string | null;
   /** Paired by an earlier version: pair again over the LAN. */
   legacy: boolean;
+  /** The network has seen it lately (an announcement or a scan). */
+  online: boolean;
   createdAt: string;
+}
+
+/** Another SLink the network showed: announcements and scan hits, folded by daemon. */
+export interface SenLinkDiscovered {
+  daemonId: string;
+  name: string;
+  /** LAN addresses, IPv4 first. */
+  addrs: string[];
+  port: number;
+  /** It has a live invite, so a code can be redeemed there now. */
+  pairable: boolean;
+  sources: ('mdns' | 'scan')[];
+  seenSecsAgo: number;
+}
+
+/** A network scan, running or finished. */
+export interface SenLinkScan {
+  scanId: string;
+  state: 'running' | 'done' | 'canceled';
+  scanned: number;
+  total: number;
+  port: number;
+  /** The subnets being walked, `a.b.c.d/len`. */
+  ranges: string[];
+  /** Things worth telling the person: a subnet narrowed or skipped. */
+  notes: string[];
+  found: { daemonId: string; name: string; addrs: string[]; port: number; pairable: boolean }[];
 }
 
 export interface SenLinkStatus {
@@ -48,6 +77,8 @@ export interface SenLinkStatus {
   addresses: string[];
   /** Peers dropped at startup because only a hub reached them. */
   migrated: string[];
+  /** Finding other SLinks by announcement: what runs, and why not. */
+  discovery: { browsing: boolean; advertising: boolean; error: string | null };
 }
 
 export interface SenLinkInvite {
@@ -89,6 +120,13 @@ export const senLinkApi = {
   /** Where a typed IP or name lands and whether a SLink answers there. Never throws for a bad address: read `code`. */
   probe: (addr: string) => apiPost<SenLinkProbe>('/api/sen-link/probe', { addr }),
   pair: (addr: string, code: string) => apiPost<SenLinkPeer>('/api/sen-link/peers/pair', { addr, code }),
+  /** What the network has shown. */
+  discovered: () =>
+    apiGet<{ discovered: SenLinkDiscovered[]; browsing: boolean; advertising: boolean; error: string | null }>('/api/sen-link/discovered'),
+  /** Start walking this machine's networks (or `cidr`) for SLinks. One at a time: a second start is a 409. */
+  scanStart: (opts: { cidr?: string; port?: number } = {}) => apiPost<SenLinkScan>('/api/sen-link/scan', opts),
+  scanGet: (id: string) => apiGet<SenLinkScan>(`/api/sen-link/scan/${encodeURIComponent(id)}`),
+  scanCancel: (id: string) => apiPost<SenLinkScan>(`/api/sen-link/scan/${encodeURIComponent(id)}/cancel`),
   patchPeer: (id: string, p: { name?: string; autoRun?: boolean; assignee?: string }) =>
     apiPatch<SenLinkPeer>(`/api/sen-link/peers/${encodeURIComponent(id)}`, p),
   removePeer: (id: string) => apiDelete<void>(`/api/sen-link/peers/${encodeURIComponent(id)}`),

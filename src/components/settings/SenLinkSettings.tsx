@@ -9,6 +9,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Progress,
   Space,
   Spin,
   Switch,
@@ -24,9 +25,11 @@ import {
   senLinkApi,
   taskStateLabel,
   type A2ATask,
+  type SenLinkDiscovered,
   type SenLinkInvite,
   type SenLinkPeer,
   type SenLinkProbe,
+  type SenLinkScan,
   type SenLinkSettings as Settings,
   type SenLinkStatus,
 } from '../../lib/coworkApi';
@@ -132,6 +135,84 @@ const PeerTasks: React.FC<{ peer: SenLinkPeer }> = ({ peer }) => {
   );
 };
 
+/** The address to type for a discovered SLink: its first (IPv4-first) address and port. */
+const addrOf = (d: SenLinkDiscovered) => hostPort(d.addrs[0] ?? '', d.port);
+
+/**
+ * Other SLinks the network has shown — announcements arrive on their own, a
+ * scan only when the person asks — each one tap away from the address field.
+ */
+const Nearby: React.FC<{
+  enabled: boolean;
+  discovered: SenLinkDiscovered[];
+  scan: SenLinkScan | null;
+  announcing: boolean;
+  discoveryError: string | null;
+  onScan: () => void;
+  onCancel: () => void;
+  onUse: (d: SenLinkDiscovered) => void;
+}> = ({ enabled, discovered, scan, announcing, discoveryError, onScan, onCancel, onUse }) => {
+  const { t, tArgs } = useLang();
+  const running = scan?.state === 'running';
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      <Space wrap>
+        <Text strong>{t('Nearby SenClaws')}</Text>
+        <Tooltip title={t('A scan tries to connect to the SLink port on every address of this machine\'s networks. Some company networks flag that.')}>
+          <Button size="small" loading={running} disabled={!enabled} onClick={onScan}>
+            {t('Scan network')}
+          </Button>
+        </Tooltip>
+        {running && (
+          <Button size="small" onClick={onCancel}>
+            {t('Cancel')}
+          </Button>
+        )}
+      </Space>
+      {running && scan && <Progress percent={scan.total ? Math.round((scan.scanned / scan.total) * 100) : 0} size="small" format={() => `${scan.scanned}/${scan.total}`} />}
+      {scan && scan.notes.length > 0 && <Alert type="info" showIcon message={scan.notes.join(' ')} />}
+      {scan && scan.state !== 'running' && (
+        <Text type="secondary">
+          {scan.state === 'canceled'
+            ? t('Scan canceled.')
+            : scan.found.length === 0
+              ? tArgs('Scan finished: no SenClaw on {ranges}.', { ranges: scan.ranges.join(', ') })
+              : tArgs('Scan finished: {n} found on {ranges}.', { n: scan.found.length, ranges: scan.ranges.join(', ') })}
+        </Text>
+      )}
+      {discoveryError && enabled && (
+        <Alert type="warning" showIcon message={tArgs('Finding SenClaws by announcement is not working: {error}', { error: discoveryError })} />
+      )}
+      {discovered.length === 0 ? (
+        <Text type="secondary">
+          {enabled
+            ? t('No other SenClaw seen yet. They show up here when they announce themselves on this network; or scan, or type an address.')
+            : t('Enable SLink to find other SenClaws.')}
+        </Text>
+      ) : (
+        discovered.map((d) => (
+          <Space key={d.daemonId} wrap>
+            <Text strong>{d.name}</Text>
+            <Text code>{addrOf(d)}</Text>
+            {d.pairable && <Tag color="green">{t('has an invite')}</Tag>}
+            {d.sources.map((src) => (
+              <Tag key={src}>{src === 'mdns' ? t('announced') : t('scan')}</Tag>
+            ))}
+            <Button size="small" icon={<LinkOutlined />} onClick={() => onUse(d)}>
+              {t('Use')}
+            </Button>
+          </Space>
+        ))
+      )}
+      {!announcing && enabled && (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {t('This SenClaw is not announcing itself, so others will not find it by listening.')}
+        </Text>
+      )}
+    </Space>
+  );
+};
+
 /** What a typed address turned out to be, in a sentence a person can act on. */
 const ProbeResult: React.FC<{ probe: SenLinkProbe }> = ({ probe }) => {
   const { t, tArgs } = useLang();
@@ -175,6 +256,8 @@ export const SenLinkSettings: React.FC = () => {
   const [probing, setProbing] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [migratedShown, setMigratedShown] = useState(true);
+  const [discovered, setDiscovered] = useState<SenLinkDiscovered[]>([]);
+  const [scan, setScan] = useState<SenLinkScan | null>(null);
   const [sendTo, setSendTo] = useState<SenLinkPeer | null>(null);
   const [sendText, setSendText] = useState('');
   const [sendWorktree, setSendWorktree] = useState(true);
@@ -194,6 +277,45 @@ export const SenLinkSettings: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // What the network shows changes by itself: look again every few seconds while this screen is open.
+  const enabledNow = status?.settings.enabled ?? false;
+  useEffect(() => {
+    if (!enabledNow) return;
+    let alive = true;
+    const look = () =>
+      senLinkApi
+        .discovered()
+        .then((d) => alive && setDiscovered(d.discovered))
+        .catch(() => undefined);
+    look();
+    const timer = setInterval(look, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [enabledNow]);
+
+  // A running scan is polled until it ends, then the list is read once more.
+  const scanId = scan?.state === 'running' ? scan.scanId : null;
+  useEffect(() => {
+    if (!scanId) return;
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const s = await senLinkApi.scanGet(scanId);
+        if (!alive) return;
+        setScan(s);
+        if (s.state !== 'running') senLinkApi.discovered().then((d) => alive && setDiscovered(d.discovered)).catch(() => undefined);
+      } catch (e) {
+        if (alive) message.error(errText(e));
+      }
+    }, 700);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [scanId]);
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
 
@@ -230,6 +352,24 @@ export const SenLinkSettings: React.FC = () => {
     } finally {
       setProbing(false);
     }
+  };
+
+  const startScan = async () => {
+    try {
+      setScan(await senLinkApi.scanStart());
+    } catch (e) {
+      message.error(errText(e));
+    }
+  };
+
+  const useDiscovered = (d: SenLinkDiscovered) => {
+    const addr = addrOf(d);
+    setPairAddr(addr);
+    setProbe(null);
+    senLinkApi
+      .probe(addr)
+      .then(setProbe)
+      .catch((e) => message.error(errText(e)));
   };
 
   if (loadError) return <Alert type="error" showIcon message={t('Could not load SLink')} description={loadError} />;
@@ -373,6 +513,16 @@ export const SenLinkSettings: React.FC = () => {
               ))}
             </Text>
           )}
+          <Nearby
+            enabled={status.settings.enabled}
+            discovered={discovered}
+            scan={scan}
+            announcing={status.discovery.advertising || !status.settings.discoverable || !status.listening}
+            discoveryError={status.discovery.error}
+            onScan={startScan}
+            onCancel={() => scan && senLinkApi.scanCancel(scan.scanId).then(setScan).catch((e) => message.error(errText(e)))}
+            onUse={useDiscovered}
+          />
           <Space wrap>
             <Input
               style={{ width: 320 }}
@@ -432,6 +582,7 @@ export const SenLinkSettings: React.FC = () => {
                 render: (_, p) => (
                   <Space size={4}>
                     {p.addr ?? <Text type="secondary">—</Text>}
+                    {p.online && <Tag color="green">{t('online')}</Tag>}
                     {p.legacy && (
                       <Tooltip title={t('Paired by an older version. Pair again over the LAN.')}>
                         <Tag color="orange">{t('re-pair')}</Tag>
