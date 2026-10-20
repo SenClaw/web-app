@@ -9,6 +9,7 @@ export type JobStatus =
   | 'listing'
   | 'downloading'
   | 'verifying'
+  | 'extracting'
   | 'copying'
   | 'done'
   | 'error'
@@ -28,7 +29,12 @@ export interface JobState {
 
 export type Kind = 'english' | 'multilingual';
 
+/** Which engine runs a model: a Laya checkpoint on ONNX Runtime, or jevos in its own `jev` process. */
+export type Engine = 'laya' | 'jev';
+
 export interface LoadedInfo {
+  /** `laya-onnx` or `jev-openvino`; absent from runtimes before jevos. */
+  engine?: 'laya-onnx' | 'jev-openvino';
   kind: Kind;
   load_ms: number;
   loaded_at: number;
@@ -48,6 +54,8 @@ export interface ModelRow {
   label: string;
   description: string;
   kind: Kind | null;
+  /** Absent from runtimes before jevos: those are all Laya. */
+  engine?: Engine;
   catalog: boolean;
   // `url`: where the files came from (a Hub tree or a GitHub release); absent
   // from older runtimes and installs, which all came from the Hub.
@@ -165,7 +173,7 @@ export function asAnswer(raw: unknown): Answer | null {
   return null;
 }
 
-export const ACTIVE: JobStatus[] = ['queued', 'listing', 'downloading', 'verifying', 'copying'];
+export const ACTIVE: JobStatus[] = ['queued', 'listing', 'downloading', 'verifying', 'extracting', 'copying'];
 export const percent = new Intl.NumberFormat('vi-VN', { style: 'percent', maximumFractionDigits: 1 });
 export const decimal = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 });
 

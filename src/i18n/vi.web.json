@@ -591,5 +591,11 @@
   "Project facts": "Fact",
   "Facts and memory": "Fact và bộ nhớ",
   "the project is archived and takes no new sessions": "dự án đã lưu trữ và không nhận phiên mới",
-  "no such project": "không có dự án như vậy"
+  "no such project": "không có dự án như vậy",
+  "unpacking": "đang giải nén",
+  "Runs on its own jev engine (OpenVINO), started as a child process of the decision runtime. It answers only when a request names it or it is the default — never by language.": "Chạy bằng engine jev riêng (OpenVINO), khởi động như tiến trình con của runtime quyết định. Chỉ trả lời khi lượt hỏi nêu tên model này hoặc chọn làm mặc định — không bao giờ tự chọn theo ngôn ngữ.",
+  "jevos (Jev’s open model, English only) is in the table too: pick the version to download. Its engine and weights come from the feder-cr/jev release, are checked against a pinned sha256, and run as a separate jev process.": "Bảng cũng có jevos (model mở của Jev, chỉ tiếng Anh): chọn phiên bản để tải. Engine và trọng số lấy từ release feder-cr/jev, được kiểm theo sha256 đã ghim, và chạy thành tiến trình jev riêng.",
+  "jevos runs in its own process and is not affected.": "jevos chạy trong tiến trình riêng nên không bị ảnh hưởng.",
+  "On this machine — Laya or jevos": "Trên máy — Laya hoặc jevos",
+  "loaded in {s} s · {threads} threads · jev engine (OpenVINO) · {n} asks": "nạp trong {s} s · {threads} luồng · engine jev (OpenVINO) · {n} lượt hỏi"
 }

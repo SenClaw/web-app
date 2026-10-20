@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { ApiOutlined, CloudOutlined, DesktopOutlined, SaveOutlined } from '@ant-design/icons';
 import { decimal, post, put, type ModelRow, type Provider, type RunSettings, type SettingsView } from './decisionApi';
+import { useLang } from '../../i18n';
 
 const { Text, Paragraph } = Typography;
 
@@ -58,6 +59,7 @@ export const DecisionRunSettings: React.FC<{
   installed: ModelRow[];
   onSaved: (v: SettingsView) => void;
 }> = ({ view, installed, onSaved }) => {
+  const { t } = useLang();
   const [draft, setDraft] = useState<RunSettings | null>(null);
   const [clearKey, setClearKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -156,7 +158,7 @@ export const DecisionRunSettings: React.FC<{
               value: 'local',
               label: (
                 <Space size={6}>
-                  <DesktopOutlined /> Trên máy — Laya
+                  <DesktopOutlined /> {t('On this machine — Laya or jevos')}
                 </Space>
               ),
             },
@@ -200,7 +202,7 @@ export const DecisionRunSettings: React.FC<{
           </Field>
           <Field
             label="Số luồng CPU"
-            help={`Luồng ONNX Runtime cho mỗi model. Để trống = tự động (${d.threads} trên máy này). Model đang nạp giữ số luồng lúc nạp — gỡ rồi nạp lại để đổi.`}
+            help={`Luồng CPU cho mỗi model (ONNX Runtime hoặc engine jev). Để trống = tự động (${d.threads} trên máy này). Model đang nạp giữ số luồng lúc nạp — gỡ rồi nạp lại để đổi.`}
           >
             <InputNumber
               min={1}
@@ -219,7 +221,7 @@ export const DecisionRunSettings: React.FC<{
           </Field>
           <Field
             label="Tự gỡ khỏi RAM khi không dùng"
-            help="Model không được hỏi trong khoảng này sẽ được gỡ để trả bộ nhớ (mỗi model 1,2–1,7 GB). Bật Tự nạp thì lượt hỏi sau tự nạp lại."
+            help="Model không được hỏi trong khoảng này sẽ được gỡ để trả bộ nhớ (mỗi model Laya 1,2–1,7 GB; jevos ~4 GB trên Mac Apple silicon). Bật Tự nạp thì lượt hỏi sau tự nạp lại."
           >
             <Select
               style={{ width: 180 }}

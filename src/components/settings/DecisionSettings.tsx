@@ -35,6 +35,7 @@ import { DecisionSkillsCard } from './DecisionSkillsCard';
 import { DecisionRunSettings, idleLabel } from './DecisionRunSettings';
 import { RuntimeMissingBanner } from './RuntimeMissingBanner';
 import { runtimeMissingFromError, type RuntimeMissingInfo } from '../../lib/runtimeApi';
+import { useLang } from '../../i18n';
 import {
   ACTIVE,
   api,
@@ -200,6 +201,7 @@ function unloadHint(l: LoadedInfo, idleMinutes: number): string {
 }
 
 export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> = ({ onOpenRuntimeSettings }) => {
+  const { t, tArgs } = useLang();
   const [list, setList] = useState<ListResponse | null>(null);
   const [settingsView, setSettingsView] = useState<SettingsView | null>(null);
   const [refreshing, setRefreshing] = useState(true);
@@ -380,11 +382,13 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
       const verb =
         j.status === 'verifying'
           ? 'đang kiểm sha256'
-          : j.status === 'copying'
-            ? 'đang sao chép'
-            : j.status === 'listing'
-              ? 'đang lấy danh sách file'
-              : 'đang tải';
+          : j.status === 'extracting'
+            ? t('unpacking')
+            : j.status === 'copying'
+              ? 'đang sao chép'
+              : j.status === 'listing'
+                ? 'đang lấy danh sách file'
+                : 'đang tải';
       return (
         <div>
           <Progress percent={pct} size="small" status="active" />
@@ -415,8 +419,15 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
           )}
           <br />
           <Text type="secondary" style={{ fontSize: 12 }}>
-            nạp trong {decimal.format(m.loaded.load_ms / 1000)} s · {m.loaded.threads} luồng · batch{' '}
-            {m.loaded.batch === 'dynamic' ? 'động' : 'cố định 1'} · {m.loaded.asks} lượt hỏi
+            {m.loaded.engine === 'jev-openvino'
+              ? tArgs('loaded in {s} s · {threads} threads · jev engine (OpenVINO) · {n} asks', {
+                  s: decimal.format(m.loaded.load_ms / 1000),
+                  threads: m.loaded.threads,
+                  n: m.loaded.asks,
+                })
+              : `nạp trong ${decimal.format(m.loaded.load_ms / 1000)} s · ${m.loaded.threads} luồng · batch ${
+                  m.loaded.batch === 'dynamic' ? 'động' : 'cố định 1'
+                } · ${m.loaded.asks} lượt hỏi`}
           </Text>
           {idleMinutes > 0 && (
             <>
@@ -472,7 +483,7 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
             type="primary"
             icon={<PlayCircleOutlined />}
             loading={m.loading || pending === 'load'}
-            disabled={!list?.compiled}
+            disabled={!list?.compiled && m.engine !== 'jev'}
             onClick={() => load(m)}
           >
             Nạp
@@ -507,6 +518,15 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
           <Space size={6} wrap>
             <Text strong>{m.label}</Text>
             <KindTag kind={m.kind} />
+            {m.engine === 'jev' && (
+              <Tooltip
+                title={t(
+                  'Runs on its own jev engine (OpenVINO), started as a child process of the decision runtime. It answers only when a request names it or it is the default — never by language.',
+                )}
+              >
+                <Tag color="purple">jev · OpenVINO</Tag>
+              </Tooltip>
+            )}
             {!m.catalog && <Tag>tuỳ chỉnh</Tag>}
             {defaultModel === m.id && <Tag color="gold">mặc định</Tag>}
           </Space>
@@ -571,6 +591,11 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
         <Text strong>Đa ngữ</Text>: bản English đọc tiếng Việt sai mà vẫn tự tin. Cũng có thể trả lời bằng{' '}
         <Text strong>Jev online</Text> (TypeSafe / Cloudflare / endpoint tương thích) — chọn ở Cách chạy.
       </Paragraph>
+      <Paragraph type="secondary">
+        {t(
+          'jevos (Jev’s open model, English only) is in the table too: pick the version to download. Its engine and weights come from the feder-cr/jev release, are checked against a pinned sha256, and run as a separate jev process.',
+        )}
+      </Paragraph>
     </>
   );
 
@@ -602,7 +627,8 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
             <>
               Daemon được build không kèm feature <Text code>decision-laya</Text>: vẫn tải / nhập / xoá model
               được, nhưng không nạp và không hỏi được. Build lại với{' '}
-              <Text code>--features decision-laya</Text> (đã có trong <Text code>DAEMON_FEATURES</Text>).
+              <Text code>--features decision-laya</Text> (đã có trong <Text code>DAEMON_FEATURES</Text>).{' '}
+              {t('jevos runs in its own process and is not affected.')}
             </>
           }
         />
@@ -692,7 +718,7 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
                   value: 'settings',
                   label: `Theo cài đặt (${(list?.backend ?? 'local') === 'online' ? 'Online' : 'Trên máy'})`,
                 },
-                { value: 'local', label: 'Trên máy — Laya' },
+                { value: 'local', label: t('On this machine — Laya or jevos') },
                 { value: 'online', label: 'Online — Jev API' },
               ]}
             />
@@ -777,9 +803,7 @@ export const DecisionSettings: React.FC<{ onOpenRuntimeSettings?: () => void }> 
               <Text type="secondary">định tuyến: {result.routing.reason}</Text>
               <Text type="secondary">{decimal.format(result.latency_ms)} ms</Text>
               <Text type="secondary">{result.usage.input_tokens} token đầu vào</Text>
-              {!result.engine.startsWith('online') && (
-                <Text type="secondary">{result.runs} lượt chạy đồ thị</Text>
-              )}
+              {result.engine === 'laya-onnx' && <Text type="secondary">{result.runs} lượt chạy đồ thị</Text>}
             </Space>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
               {answers.map(([id, a]) => (
