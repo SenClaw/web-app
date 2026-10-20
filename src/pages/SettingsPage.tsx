@@ -127,7 +127,7 @@ export const SettingsPage: React.FC = () => {
       { key: 'ocr', icon: <ScanOutlined />, label: t('OCR') },
       { key: 'decision', icon: <BranchesOutlined />, label: t('Decision (Laya)') },
       { key: 'browser', icon: <GlobalOutlined />, label: t('Browser') },
-      { key: 'sen-link', icon: <ShareAltOutlined />, label: 'sen-link' },
+      { key: 'sen-link', icon: <ShareAltOutlined />, label: 'SLink' },
       { key: 'cognitive', icon: <ExperimentOutlined />, label: t('Cognitive') },
     ],
     [t]

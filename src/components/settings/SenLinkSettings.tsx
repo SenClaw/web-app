@@ -6,6 +6,7 @@ import {
   Checkbox,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Space,
@@ -13,12 +14,22 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
 import { DeleteOutlined, LinkOutlined, ReloadOutlined, SaveOutlined, SendOutlined } from '@ant-design/icons';
 import { useLang } from '../../i18n';
-import { senLinkApi, taskStateLabel, type A2ATask, type SenLinkPeer, type SenLinkSettings as Settings } from '../../lib/coworkApi';
+import {
+  senLinkApi,
+  taskStateLabel,
+  type A2ATask,
+  type SenLinkInvite,
+  type SenLinkPeer,
+  type SenLinkProbe,
+  type SenLinkSettings as Settings,
+  type SenLinkStatus,
+} from '../../lib/coworkApi';
 
 const { Text, Paragraph } = Typography;
 
@@ -46,6 +57,8 @@ const STATE_COLOR: Record<string, string> = {
 };
 
 const orNull = (v: string) => (v.trim() === '' ? null : v.trim());
+/** `ip:port`, with an IPv6 address in brackets. */
+const hostPort = (ip: string, port: number) => (ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`);
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Tasks this daemon sent to one peer, read back from the peer over A2A. */
@@ -119,21 +132,49 @@ const PeerTasks: React.FC<{ peer: SenLinkPeer }> = ({ peer }) => {
   );
 };
 
+/** What a typed address turned out to be, in a sentence a person can act on. */
+const ProbeResult: React.FC<{ probe: SenLinkProbe }> = ({ probe }) => {
+  const { t, tArgs } = useLang();
+  if (!probe.ok || !probe.card) {
+    if (probe.ok && probe.hidden) {
+      return <Alert type="success" showIcon message={tArgs('A SLink answers at {addr}, but it hides its name. You can still pair with a code.', { addr: probe.addr })} />;
+    }
+    return <Alert type="warning" showIcon message={probe.error ?? t('Nothing answered.')} />;
+  }
+  return (
+    <Alert
+      type={probe.card.pairable ? 'success' : 'info'}
+      showIcon
+      message={tArgs('Found {name} at {addr}', { name: probe.card.name, addr: probe.addr })}
+      description={
+        <>
+          {probe.resolved.length > 0 && <div>{probe.resolved.join(', ')}</div>}
+          {!probe.card.pairable && <div>{t('It has no invite right now. Create one on that SenClaw and type its code here.')}</div>}
+        </>
+      }
+    />
+  );
+};
+
 /**
- * Settings → sen-link: peer this SenClaw with another one over A2A, delegate
- * tasks to it, and decide how much a peer's own tasks may do here.
+ * Settings → SLink (code name sen-link): peer this SenClaw with another one on
+ * the same network over A2A, delegate tasks to it, and decide how much a
+ * peer's own tasks may do here.
  */
 export const SenLinkSettings: React.FC = () => {
-  const { t } = useLang();
+  const { t, tArgs } = useLang();
+  const [status, setStatus] = useState<SenLinkStatus | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
   const [peers, setPeers] = useState<SenLinkPeer[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [invite, setInvite] = useState<{ code: string; expiresAt: number; connect: string | null } | null>(null);
-  const [connectStr, setConnectStr] = useState('');
-  const [pairUrl, setPairUrl] = useState('');
+  const [invite, setInvite] = useState<SenLinkInvite | null>(null);
+  const [pairAddr, setPairAddr] = useState('');
   const [pairCode, setPairCode] = useState('');
+  const [probe, setProbe] = useState<SenLinkProbe | null>(null);
+  const [probing, setProbing] = useState(false);
   const [pairing, setPairing] = useState(false);
+  const [migratedShown, setMigratedShown] = useState(true);
   const [sendTo, setSendTo] = useState<SenLinkPeer | null>(null);
   const [sendText, setSendText] = useState('');
   const [sendWorktree, setSendWorktree] = useState(true);
@@ -141,6 +182,7 @@ export const SenLinkSettings: React.FC = () => {
   const load = useCallback(async () => {
     try {
       const [st, p] = await Promise.all([senLinkApi.status(), senLinkApi.peers()]);
+      setStatus(st);
       setDraft(st.settings);
       setPeers(p.peers);
       setLoadError(null);
@@ -161,6 +203,8 @@ export const SenLinkSettings: React.FC = () => {
     try {
       setDraft(await senLinkApi.putSettings(draft));
       message.success(t('Saved'));
+      // The daemon opens, moves or closes its LAN socket a moment after the save.
+      setTimeout(load, 600);
     } catch (e) {
       message.error(errText(e));
     } finally {
@@ -177,13 +221,35 @@ export const SenLinkSettings: React.FC = () => {
     }
   };
 
-  if (loadError) return <Alert type="error" showIcon message={t('Could not load sen-link')} description={loadError} />;
-  if (!draft) return <Spin />;
+  const checkAddress = async () => {
+    setProbing(true);
+    try {
+      setProbe(await senLinkApi.probe(pairAddr.trim()));
+    } catch (e) {
+      message.error(errText(e));
+    } finally {
+      setProbing(false);
+    }
+  };
+
+  if (loadError) return <Alert type="error" showIcon message={t('Could not load SLink')} description={loadError} />;
+  if (!draft || !status) return <Spin />;
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {status.migrated.length > 0 && migratedShown && (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setMigratedShown(false)}
+          message={tArgs('Peers that only a hub reached were removed: {names}. Pair them again over the LAN.', {
+            names: status.migrated.join(', '),
+          })}
+        />
+      )}
       <Card
-        title="sen-link"
+        title="SLink"
         extra={
           <Space>
             <Button icon={<ReloadOutlined />} onClick={load}>
@@ -196,38 +262,56 @@ export const SenLinkSettings: React.FC = () => {
         }
       >
         <Paragraph type="secondary">
-          {t('Connect this SenClaw to another one (A2A protocol) to hand tasks back and forth. Tasks a peer sends land on a kanban board.')}
+          {t('Connect this SenClaw to another one on the same network (A2A protocol) to hand tasks back and forth. Tasks a peer sends land on a kanban board.')}
         </Paragraph>
         <Field label={t('Enabled')}>
-          <Switch checked={draft.enabled} onChange={(v) => set('enabled', v)} />
+          <Space wrap>
+            <Switch checked={draft.enabled} onChange={(v) => set('enabled', v)} />
+            {status.settings.enabled &&
+              (status.listening ? (
+                <Tag color="green">{tArgs('Listening on {addr}', { addr: status.listening })}</Tag>
+              ) : (
+                <Tag color="red">{status.listenError ?? t('Not listening')}</Tag>
+              ))}
+          </Space>
         </Field>
         <Space wrap size={24}>
           <Field label={t('Name shown to peers')}>
             <Input style={{ width: 240 }} value={draft.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
           <Field
-            label={t('Public URL')}
-            help={t('How peers reach this daemon, e.g. a Tailscale address. The daemon must be bound beyond loopback (Settings → General → Network access).')}
+            label={t('Listen address')}
+            help={t('Which network interface SLink listens on; 0.0.0.0 is all of them. Only connections from a private network are accepted either way.')}
           >
-            <Input
-              style={{ width: 320 }}
-              placeholder="http://100.64.0.2:18788"
-              value={draft.publicUrl ?? ''}
-              onChange={(e) => set('publicUrl', orNull(e.target.value))}
+            <Input style={{ width: 200 }} placeholder="0.0.0.0" value={draft.listenHost} onChange={(e) => set('listenHost', e.target.value)} />
+          </Field>
+          <Field label={t('Listen port')}>
+            <InputNumber
+              style={{ width: 120 }}
+              min={1}
+              max={65535}
+              value={draft.listenPort}
+              onChange={(v) => set('listenPort', typeof v === 'number' ? v : draft.listenPort)}
             />
           </Field>
         </Space>
         <Field
-          label={t('Hub URL')}
-          help={t('A SenClaw hub for peers that cannot reach each other directly (NAT). Each invite then gets its own encrypted hub channel.')}
+          label={t('Visible to others')}
+          help={t('Off: another SenClaw cannot find this one by checking or scanning its address. Pairing with a typed address and a code still works.')}
         >
-          <Input
-            style={{ width: 320 }}
-            placeholder="https://hub.example.com"
-            value={draft.hubUrl ?? ''}
-            onChange={(e) => set('hubUrl', orNull(e.target.value))}
-          />
+          <Switch checked={draft.discoverable} onChange={(v) => set('discoverable', v)} />
         </Field>
+        {status.addresses.length > 0 && (
+          <Field label={t('Addresses of this machine')} help={t('Type one of these on the other SenClaw to pair with this one.')}>
+            <Space wrap>
+              {status.addresses.map((a) => (
+                <Text key={a} code copyable={{ text: hostPort(a, draft.listenPort) }}>
+                  {hostPort(a, draft.listenPort)}
+                </Text>
+              ))}
+            </Space>
+          </Field>
+        )}
         <Field label={t('Description')}>
           <Input value={draft.description} onChange={(e) => set('description', e.target.value)} />
         </Field>
@@ -250,16 +334,14 @@ export const SenLinkSettings: React.FC = () => {
       </Card>
 
       <Card title={t('Pair with another SenClaw')}>
-        {!draft.enabled && <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('Enable sen-link and save first.')} />}
+        {!status.settings.enabled && <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('Enable SLink and save first.')} />}
         <Space direction="vertical" style={{ width: '100%' }}>
           <Space wrap>
             <Button
-              disabled={!draft.enabled}
+              disabled={!status.settings.enabled}
               onClick={async () => {
                 try {
-                  const inv = await senLinkApi.invite();
-                  setInvite(inv);
-                  if (inv.warning) message.warning(inv.warning);
+                  setInvite(await senLinkApi.invite());
                 } catch (e) {
                   message.error(errText(e));
                 }
@@ -267,12 +349,7 @@ export const SenLinkSettings: React.FC = () => {
             >
               {t('Create invite code')}
             </Button>
-            {invite?.connect && (
-              <Paragraph copyable={{ text: invite.connect }} code style={{ wordBreak: 'break-all', marginBottom: 0, maxWidth: 520 }}>
-                {invite.connect}
-              </Paragraph>
-            )}
-            {invite && !invite.connect && (
+            {invite && (
               <Text>
                 <Text code copyable style={{ fontSize: 18 }}>
                   {invite.code}
@@ -283,25 +360,46 @@ export const SenLinkSettings: React.FC = () => {
               </Text>
             )}
           </Space>
+          {invite && !invite.listening && (
+            <Alert type="warning" showIcon message={invite.listenError ?? t('SLink is not listening, so the other SenClaw cannot reach this one.')} />
+          )}
+          {invite && invite.addresses.length > 0 && (
+            <Text type="secondary">
+              {t('Type this on the other SenClaw:')}{' '}
+              {invite.addresses.map((a) => (
+                <Text key={a} code copyable={{ text: hostPort(a, invite.port) }} style={{ marginRight: 8 }}>
+                  {hostPort(a, invite.port)}
+                </Text>
+              ))}
+            </Text>
+          )}
           <Space wrap>
             <Input
-              style={{ width: 300 }}
-              placeholder={t('Other SenClaw URL, e.g. http://100.64.0.3:18788')}
-              value={pairUrl}
-              onChange={(e) => setPairUrl(e.target.value)}
+              style={{ width: 320 }}
+              placeholder={t('IP or name of the other SenClaw, e.g. 192.168.1.20 or mac-mini.local')}
+              value={pairAddr}
+              onChange={(e) => {
+                setPairAddr(e.target.value);
+                setProbe(null);
+              }}
+              onPressEnter={() => pairAddr.trim() && checkAddress()}
             />
+            <Button loading={probing} disabled={!pairAddr.trim()} onClick={checkAddress}>
+              {t('Check')}
+            </Button>
             <Input style={{ width: 160 }} placeholder={t('Invite code')} value={pairCode} onChange={(e) => setPairCode(e.target.value)} />
             <Button
               type="primary"
               icon={<LinkOutlined />}
               loading={pairing}
-              disabled={!draft.enabled || !pairUrl.trim() || !pairCode.trim()}
+              disabled={!status.settings.enabled || !pairAddr.trim() || !pairCode.trim()}
               onClick={async () => {
                 setPairing(true);
                 try {
-                  const p = await senLinkApi.pair(pairUrl.trim(), pairCode.trim());
+                  const p = await senLinkApi.pair(pairAddr.trim(), pairCode.trim());
                   message.success(`${t('Paired with')} ${p.name}`);
                   setPairCode('');
+                  setProbe(null);
                   load();
                 } catch (e) {
                   message.error(errText(e));
@@ -313,34 +411,7 @@ export const SenLinkSettings: React.FC = () => {
               {t('Pair')}
             </Button>
           </Space>
-          <Space wrap>
-            <Input
-              style={{ width: 470 }}
-              placeholder={t('…or paste a senlink: connection string (hub invite)')}
-              value={connectStr}
-              onChange={(e) => setConnectStr(e.target.value)}
-            />
-            <Button
-              icon={<LinkOutlined />}
-              loading={pairing}
-              disabled={!draft.enabled || !connectStr.trim().startsWith('senlink:')}
-              onClick={async () => {
-                setPairing(true);
-                try {
-                  const p = await senLinkApi.pairConnect(connectStr.trim());
-                  message.success(`${t('Paired with')} ${p.name}`);
-                  setConnectStr('');
-                  load();
-                } catch (e) {
-                  message.error(errText(e));
-                } finally {
-                  setPairing(false);
-                }
-              }}
-            >
-              {t('Pair via hub')}
-            </Button>
-          </Space>
+          {probe && <ProbeResult probe={probe} />}
         </Space>
       </Card>
 
@@ -357,8 +428,17 @@ export const SenLinkSettings: React.FC = () => {
             columns={[
               { title: t('Name'), dataIndex: 'name' },
               {
-                title: 'URL',
-                render: (_, p) => (p.viaRelay ? <Tag color="purple">hub</Tag> : p.url ?? <Text type="secondary">—</Text>),
+                title: t('Address'),
+                render: (_, p) => (
+                  <Space size={4}>
+                    {p.addr ?? <Text type="secondary">—</Text>}
+                    {p.legacy && (
+                      <Tooltip title={t('Paired by an older version. Pair again over the LAN.')}>
+                        <Tag color="orange">{t('re-pair')}</Tag>
+                      </Tooltip>
+                    )}
+                  </Space>
+                ),
               },
               {
                 title: t('Their tasks run'),
