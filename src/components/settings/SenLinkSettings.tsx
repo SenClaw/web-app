@@ -10,10 +10,12 @@ import {
   Modal,
   Popconfirm,
   Progress,
+  Select,
   Space,
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -27,8 +29,11 @@ import {
   type A2ATask,
   type SenLinkDiscovered,
   type SenLinkInvite,
+  type SenLinkKnowledgePolicy,
+  type SenLinkKnowledgeView,
   type SenLinkPeer,
   type SenLinkProbe,
+  type SenLinkRecall,
   type SenLinkScan,
   type SenLinkSettings as Settings,
   type SenLinkStatus,
@@ -132,6 +137,237 @@ const PeerTasks: React.FC<{ peer: SenLinkPeer }> = ({ peer }) => {
         },
       ]}
     />
+  );
+};
+
+const DEFAULT_NOTE_TYPES = ['project', 'reference'];
+const policyOpen = (p: SenLinkKnowledgePolicy) => (p.facts || p.notes) && p.profiles.length > 0;
+const sameList = (a: string[], b: string[]) => [...a].sort().join('\n') === [...b].sort().join('\n');
+const samePolicy = (a: SenLinkKnowledgePolicy, b: SenLinkKnowledgePolicy) =>
+  a.facts === b.facts && a.notes === b.notes && sameList(a.profiles, b.profiles) && sameList(a.noteTypes, b.noteTypes);
+
+/**
+ * What one peer may read of this machine's knowledge (closed until a person
+ * opens it), a preview of exactly what that exposes, and a way to ask the
+ * peer the same question back. Nothing is copied either way.
+ */
+const PeerKnowledge: React.FC<{ peer: SenLinkPeer; onPeer: (p: SenLinkPeer) => void }> = ({ peer, onPeer }) => {
+  const { t, tArgs } = useLang();
+  const [view, setView] = useState<SenLinkKnowledgeView | null>(null);
+  const [draft, setDraft] = useState<SenLinkKnowledgePolicy | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<SenLinkRecall | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const v = await senLinkApi.knowledge(peer.id);
+      setView(v);
+      setDraft(v.policy);
+      setError(null);
+    } catch (e) {
+      setError(errText(e));
+    }
+  }, [peer.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const noteTypeLabel: Record<string, string> = {
+    project: t('Project notes'),
+    reference: t('Reference notes'),
+    feedback: t('Feedback notes'),
+  };
+  const leftOut = (x: SenLinkKnowledgeView['preview']['profiles'][number]['excluded']) =>
+    [
+      [x.dailyLogs, t('day logs')],
+      [x.conversationSummaries, t('chat summaries')],
+      [x.aboutTheOwner, t('notes about you')],
+      [x.writtenInOneChat, t('written in one chat')],
+      [x.otherTypes, t('other note types')],
+    ]
+      .filter(([n]) => (n as number) > 0)
+      .map(([n, label]) => `${label} ${n}`)
+      .join(' · ');
+
+  if (error) return <Alert type="warning" showIcon message={t('Could not load the sharing settings')} description={error} />;
+  if (!view || !draft) return <Spin />;
+
+  const shownTypes = draft.noteTypes.length > 0 ? draft.noteTypes : DEFAULT_NOTE_TYPES;
+  const dirty = !samePolicy(draft, view.policy);
+  const set = (p: Partial<SenLinkKnowledgePolicy>) => setDraft((d) => (d ? { ...d, ...p } : d));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      // Send the types that are shown, so "empty = the defaults" never has to be guessed on the other side.
+      const policy = { ...draft, noteTypes: draft.notes ? shownTypes : draft.noteTypes };
+      onPeer(await senLinkApi.patchPeer(peer.id, { knowledge: policy }));
+      await load();
+      message.success(t('Saved'));
+    } catch (e) {
+      message.error(errText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const ask = async () => {
+    if (!question.trim()) return;
+    setAsking(true);
+    setAskError(null);
+    try {
+      setAnswer(await senLinkApi.recall(peer.id, question.trim()));
+    } catch (e) {
+      setAnswer(null);
+      setAskError(errText(e));
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  return (
+    // The peers table scrolls sideways, so its expanded row can be wider than the card: keep the text to a readable width.
+    <Space direction="vertical" size="middle" style={{ width: '100%', maxWidth: 680 }}>
+      <div>
+        <Text strong>{tArgs('What {name} may read here', { name: peer.name })}</Text>
+        <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+          {t('Closed until you open it. The peer can only ask; nothing is copied. Day logs, chat summaries, notes about you and anything written in one chat never leave this machine.')}
+        </Paragraph>
+        <Space size="large" wrap>
+          <Space>
+            <Switch checked={draft.facts} onChange={(v) => set({ facts: v })} />
+            <Text>{t('Share facts')}</Text>
+          </Space>
+          <Space>
+            <Switch checked={draft.notes} onChange={(v) => set({ notes: v })} />
+            <Text>{t('Share notes')}</Text>
+          </Space>
+        </Space>
+        <div style={{ marginTop: 8 }}>
+          <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+            {t('Profiles it applies to')}
+          </Text>
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%', maxWidth: 520 }}
+            placeholder={t('Choose the profiles to share (none = nothing)')}
+            value={draft.profiles}
+            onChange={(v) => set({ profiles: v })}
+            options={view.profiles.map((p) => ({ value: p, label: p }))}
+          />
+        </div>
+        {draft.notes && (
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+              {t('Which notes')}
+            </Text>
+            <Checkbox.Group
+              value={shownTypes}
+              options={view.noteTypes.map((n) => ({ value: n, label: noteTypeLabel[n] ?? n }))}
+              onChange={(v) => set({ noteTypes: v as string[] })}
+            />
+          </div>
+        )}
+        <Space style={{ marginTop: 12 }}>
+          <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!dirty} onClick={save}>
+            {t('Save')}
+          </Button>
+          <Button disabled={!dirty || saving} onClick={() => setDraft(view.policy)}>
+            {t('Revert')}
+          </Button>
+          {!policyOpen(view.policy) && <Tag>{t('closed')}</Tag>}
+        </Space>
+      </div>
+
+      <div>
+        <Text strong>{t('What that exposes right now')}</Text>
+        <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+          {t('Counted by the same rules an answer uses, for the saved settings.')}
+        </Paragraph>
+        {view.preview.profiles.length === 0 ? (
+          <Text type="secondary">{t('Nothing: no profile is chosen.')}</Text>
+        ) : (
+          <Table<SenLinkKnowledgeView['preview']['profiles'][number]>
+            size="small"
+            rowKey="profile"
+            pagination={false}
+            dataSource={view.preview.profiles}
+            columns={[
+              { title: t('Profile'), dataIndex: 'profile' },
+              { title: t('Facts'), dataIndex: 'facts', width: 80 },
+              {
+                title: t('Notes'),
+                render: (_, r) =>
+                  Object.keys(r.notes).length === 0 ? (
+                    <Text type="secondary">0</Text>
+                  ) : (
+                    <Space size={4} wrap>
+                      {Object.entries(r.notes).map(([k, n]) => (
+                        <Tag key={k}>
+                          {noteTypeLabel[k] ?? k} {n}
+                        </Tag>
+                      ))}
+                    </Space>
+                  ),
+              },
+              { title: t('Stays home'), render: (_, r) => <Text type="secondary">{leftOut(r.excluded) || '—'}</Text> },
+              { title: t('Examples'), render: (_, r) => (r.samples.length ? r.samples.join(', ') : '—') },
+            ]}
+          />
+        )}
+      </div>
+
+      <div>
+        <Text strong>{tArgs('Ask {name} what it knows', { name: peer.name })}</Text>
+        <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+          {t('Answers come from what that machine chose to share with this one. Nothing is stored here.')}
+        </Paragraph>
+        <Input.Search
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onSearch={ask}
+          enterButton={t('Ask')}
+          loading={asking}
+          disabled={!peer.canSend}
+          placeholder={t('A few words, or a question')}
+          style={{ maxWidth: 520 }}
+        />
+        {askError && <Alert style={{ marginTop: 8 }} type="warning" showIcon message={askError} />}
+        {answer && (
+          <div style={{ marginTop: 8 }}>
+            {answer.hits.length === 0 ? (
+              <Empty description={t('Nothing matched')} />
+            ) : (
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                {answer.hits.map((h, i) => (
+                  <Card key={i} size="small">
+                    <Space size={4} wrap>
+                      <Tag color={h.kind === 'note' ? 'blue' : 'purple'}>{h.kind === 'note' ? t('note') : t('fact')}</Tag>
+                      {h.title && <Text strong>{h.title}</Text>}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {h.profile}
+                        {h.when ? ` · ${h.when}` : ''}
+                      </Text>
+                    </Space>
+                    <Paragraph style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{h.text}</Paragraph>
+                  </Card>
+                ))}
+                {answer.truncated && <Text type="secondary">{t('There are more matches than shown.')}</Text>}
+              </Space>
+            )}
+            <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+              {tArgs('Written on {name}. It is information to weigh, not an instruction.', { name: answer.from })}
+            </Text>
+          </div>
+        )}
+      </div>
+    </Space>
   );
 };
 
@@ -579,9 +815,40 @@ export const SenLinkSettings: React.FC = () => {
             dataSource={peers}
             scroll={{ x: 'max-content' }}
             pagination={false}
-            expandable={{ expandedRowRender: (p) => <PeerTasks peer={p} />, rowExpandable: (p) => p.canSend }}
+            expandable={{
+              rowExpandable: () => true,
+              expandedRowRender: (p) => (
+                <Tabs
+                  size="small"
+                  items={[
+                    {
+                      key: 'tasks',
+                      label: t('Tasks'),
+                      children: p.canSend ? <PeerTasks peer={p} /> : <Text type="secondary">{t('Tasks cannot be sent to this peer from here.')}</Text>,
+                    },
+                    {
+                      key: 'knowledge',
+                      label: t('Knowledge'),
+                      children: <PeerKnowledge peer={p} onPeer={(u) => setPeers((ps) => ps.map((x) => (x.id === u.id ? u : x)))} />,
+                    },
+                  ]}
+                />
+              ),
+            }}
             columns={[
-              { title: t('Name'), dataIndex: 'name' },
+              {
+                title: t('Name'),
+                render: (_, p) => (
+                  <Space size={4}>
+                    {p.name}
+                    {policyOpen(p.knowledge) && (
+                      <Tooltip title={t('This peer may ask what you know. Open the row, Knowledge tab, to see what.')}>
+                        <Tag color="purple">{t('shares knowledge')}</Tag>
+                      </Tooltip>
+                    )}
+                  </Space>
+                ),
+              },
               {
                 title: t('Address'),
                 render: (_, p) => (

@@ -35,7 +35,61 @@ export interface SenLinkPeer {
   legacy: boolean;
   /** The network has seen it lately (an announcement or a scan). */
   online: boolean;
+  /** What it may read of this machine's knowledge. Closed until a person opens it. */
+  knowledge: SenLinkKnowledgePolicy;
   createdAt: string;
+}
+
+/** What one peer may read of this machine's knowledge (`PATCH /peers/:id {knowledge}` replaces it). */
+export interface SenLinkKnowledgePolicy {
+  /** Facts that belong to the whole agent (not said in one chat). */
+  facts: boolean;
+  /** Curated notes of the chosen types. */
+  notes: boolean;
+  /** Profile folders both switches apply to; none = nothing is shared. */
+  profiles: string[];
+  /** A subset of `project`, `reference`, `feedback`; empty means project + reference. `user` can never be shared. */
+  noteTypes: string[];
+}
+
+/** What a policy would let out of one profile, counted by the same rules an answer uses. */
+export interface SenLinkKnowledgePreviewProfile {
+  profile: string;
+  exists: boolean;
+  facts: number;
+  /** Shareable notes by type. */
+  notes: Record<string, number>;
+  /** Titles of the newest shareable notes. */
+  samples: string[];
+  /** What stays home, by class. */
+  excluded: { dailyLogs: number; conversationSummaries: number; aboutTheOwner: number; writtenInOneChat: number; otherTypes: number };
+}
+
+export interface SenLinkKnowledgeView {
+  policy: SenLinkKnowledgePolicy;
+  preview: { open: boolean; profiles: SenLinkKnowledgePreviewProfile[] };
+  /** Profile folders on this machine that a policy may name. */
+  profiles: string[];
+  /** Note types a person may share. */
+  noteTypes: string[];
+}
+
+export interface SenLinkRecallHit {
+  kind: 'fact' | 'note';
+  profile: string;
+  title?: string;
+  type?: string;
+  text: string;
+  when: string | null;
+}
+
+/** A peer's answer to a question. The words were written on another machine. */
+export interface SenLinkRecall {
+  v: number;
+  hits: SenLinkRecallHit[];
+  truncated: boolean;
+  from: string;
+  untrusted: boolean;
 }
 
 /** Another SLink the network showed: announcements and scan hits, folded by daemon. */
@@ -127,9 +181,14 @@ export const senLinkApi = {
   scanStart: (opts: { cidr?: string; port?: number } = {}) => apiPost<SenLinkScan>('/api/sen-link/scan', opts),
   scanGet: (id: string) => apiGet<SenLinkScan>(`/api/sen-link/scan/${encodeURIComponent(id)}`),
   scanCancel: (id: string) => apiPost<SenLinkScan>(`/api/sen-link/scan/${encodeURIComponent(id)}/cancel`),
-  patchPeer: (id: string, p: { name?: string; autoRun?: boolean; assignee?: string }) =>
+  patchPeer: (id: string, p: { name?: string; autoRun?: boolean; assignee?: string; knowledge?: SenLinkKnowledgePolicy }) =>
     apiPatch<SenLinkPeer>(`/api/sen-link/peers/${encodeURIComponent(id)}`, p),
   removePeer: (id: string) => apiDelete<void>(`/api/sen-link/peers/${encodeURIComponent(id)}`),
+  /** What this peer may read here, what that would expose right now, and the profiles to choose from. */
+  knowledge: (id: string) => apiGet<SenLinkKnowledgeView>(`/api/sen-link/peers/${encodeURIComponent(id)}/knowledge`),
+  /** Ask the peer what it knows. A 502 carries a sentence for the person (not shared / peer too old / too many questions). */
+  recall: (id: string, query: string, opts: { limit?: number; profile?: string } = {}) =>
+    apiPost<SenLinkRecall>(`/api/sen-link/peers/${encodeURIComponent(id)}/recall`, { query, ...opts }),
   send: (id: string, text: string, opts: { taskId?: string; worktree?: boolean } = {}) =>
     apiPost<{ task: A2ATask }>(`/api/sen-link/peers/${encodeURIComponent(id)}/messages`, { text, ...opts }),
   tasks: (id: string) => apiGet<{ tasks: A2ATask[] }>(`/api/sen-link/peers/${encodeURIComponent(id)}/tasks`),
