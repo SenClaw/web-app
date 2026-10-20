@@ -500,6 +500,11 @@ export const SenLinkSettings: React.FC = () => {
               </Text>
             )}
           </Space>
+          {invite && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {t('Only the newest code works. It stops working after three wrong tries.')}
+            </Text>
+          )}
           {invite && !invite.listening && (
             <Alert type="warning" showIcon message={invite.listenError ?? t('SLink is not listening, so the other SenClaw cannot reach this one.')} />
           )}
