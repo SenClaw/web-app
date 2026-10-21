@@ -9,8 +9,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { theme, Button, Input, Switch, Tag, Typography, Spin, Space, Tabs, message, Card, Flex, Popconfirm, Tooltip, Descriptions } from 'antd';
+import { theme, Button, Input, Switch, Tag, Typography, Spin, Space, Tabs, message, Card, Flex, Popconfirm, Tooltip, Descriptions, Segmented } from 'antd';
 import { SearchOutlined, ReloadOutlined, ArrowLeftOutlined, EditOutlined, ThunderboltOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import SkillHistoryPanel from './SkillHistoryPanel';
+import { scanFrom } from '../../lib/skillHistoryApi';
 import 'highlight.js/styles/github.css';
 import { useAppContext } from '../../contexts/AppContext';
 import type { ToolAutoAcceptRule } from '../../types';
@@ -26,6 +28,8 @@ interface LocalSkill {
   source: string;
   dir: string;
   disabled: boolean;
+  /** Sources this skill replaces: a managed skill with a bundled skill's name hides it. */
+  shadows?: string[];
 }
 
 interface RemoteResult {
@@ -81,7 +85,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `HTTP ${res.status}`);
+    // The daemon answers `{"error": "..."}`; show the sentence, not the JSON.
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === 'string') detail = parsed.error;
+    } catch { /* not JSON */ }
+    throw new Error(detail || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -111,6 +121,17 @@ function SourceBadge({ source, className = '' }: { source: string; className?: s
     <Tag color={SOURCE_COLOR[source] ?? 'default'} className={className}>
       {SOURCE_LABEL[source] ?? source}
     </Tag>
+  );
+}
+
+/** Shown on a skill that replaces another source's skill of the same name. */
+function ShadowBadge({ shadows }: { shadows?: string[] }) {
+  if (!shadows || shadows.length === 0) return null;
+  const what = shadows.join(', ');
+  return (
+    <Tooltip title={`Replaces the ${what} skill with the same name; that one is hidden while this exists.`}>
+      <Tag color="gold">overrides {what}</Tag>
+    </Tooltip>
   );
 }
 
@@ -167,6 +188,7 @@ function SkillCard({ skill, onClick }: { skill: LocalSkill; onClick: () => void 
         {/* Footer */}
         <Flex align="center" gap={6} wrap="wrap">
           <SourceBadge source={skill.source} />
+          <ShadowBadge shadows={skill.shadows} />
           {skill.version && <Text type="secondary" style={{ fontSize: '10px' }}>v{skill.version}</Text>}
           {skill.disabled && <Tag color="error">off</Tag>}
         </Flex>
@@ -226,25 +248,42 @@ function SkillDetail({ skill, onBack, onToggleDisabled, onDelete }: {
   const [readme, setReadme] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [view, setView] = useState<'doc' | 'history'>('doc');
+  // Bumped when the file changes from this screen, so the history reloads.
+  const [historyKey, setHistoryKey] = useState(0);
 
-  useEffect(() => {
+  const loadReadme = useCallback(() => {
     fetch(`/api/skills/${encodeURIComponent(skill.name)}/readme`)
       .then(r => r.ok ? r.text() : '')
       .then(setReadme)
       .catch(() => setReadme(''));
   }, [skill.name]);
 
+  useEffect(() => { loadReadme(); }, [loadReadme]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`/api/skills/${encodeURIComponent(skill.name)}/readme`, {
+      const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}/readme`, {
         method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: draftContent,
       });
+      if (!res.ok) throw new Error((await res.text().catch(() => '')) || `HTTP ${res.status}`);
+      const scan = scanFrom(await res.json().catch(() => null));
       setReadme(draftContent);
       setEditing(false);
-      message.success('Skill updated');
+      setHistoryKey(k => k + 1);
+      if (scan && scan.findings.length > 0) {
+        // Saved, but say what the security scan found: a person typing here is
+        // trusted, a skill the agent obeys is still worth a second look.
+        message.warning(
+          `Skill saved. Security scan: ${scan.findings.map(f => f.rule).join(', ')} — see the History tab.`,
+          6,
+        );
+      } else {
+        message.success('Skill updated');
+      }
     } catch (err) {
-      message.error('Failed to save skill');
+      message.error(err instanceof Error ? `Failed to save skill: ${err.message}` : 'Failed to save skill');
     } finally {
       setSaving(false);
     }
@@ -278,6 +317,7 @@ function SkillDetail({ skill, onBack, onToggleDisabled, onDelete }: {
           <Text strong ellipsis={{ tooltip: skill.name }}>{skill.name}</Text>
           {skill.version && <Text type="secondary" style={{ fontSize: 12 }}>v{skill.version}</Text>}
           <SourceBadge source={skill.source} />
+          <ShadowBadge shadows={skill.shadows} />
           {skill.disabled && <Tag color="error">disabled</Tag>}
         </Flex>
 
@@ -298,7 +338,7 @@ function SkillDetail({ skill, onBack, onToggleDisabled, onDelete }: {
             <Button
               size="small"
               icon={<EditOutlined />}
-              onClick={() => { setDraftContent(readme ?? ''); setEditing(true); }}
+              onClick={() => { setDraftContent(readme ?? ''); setView('doc'); setEditing(true); }}
             >
               Edit
             </Button>
@@ -333,12 +373,37 @@ function SkillDetail({ skill, onBack, onToggleDisabled, onDelete }: {
           flexShrink: 0
         }}
       >
-        <Text type="secondary" style={{ fontSize: '10px', fontFamily: 'monospace' }}>{skill.dir}</Text>
+        <Flex align="center" gap={12}>
+          <Text type="secondary" style={{ fontSize: '10px', fontFamily: 'monospace', flex: 1, minWidth: 0 }} ellipsis>{skill.dir}</Text>
+          <Segmented
+            size="small"
+            value={view}
+            onChange={v => setView(v as 'doc' | 'history')}
+            options={[
+              { label: 'SKILL.md', value: 'doc' },
+              // A Space App's skills change with the app: there is no history to show here.
+              {
+                label: 'History',
+                value: 'history',
+                disabled: skill.source.startsWith('app:'),
+                title: skill.source.startsWith('app:') ? 'Installed by a Space App: it changes with the app, so it has no history here.' : undefined,
+              },
+            ]}
+          />
+        </Flex>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', backgroundColor: token.colorBgContainer }}>
-        {readme === null ? (
+      <div style={{ flex: 1, overflowY: view === 'history' ? 'hidden' : 'auto', backgroundColor: token.colorBgContainer }}>
+        {view === 'history' ? (
+          <SkillHistoryPanel
+            name={skill.name}
+            source={skill.source}
+            canRollback={skill.source === 'clawhub-managed'}
+            refreshKey={historyKey}
+            onRolledBack={() => { loadReadme(); }}
+          />
+        ) : readme === null ? (
           <Flex align="center" justify="center" style={{ height: 200 }}>
             <Spin />
           </Flex>
