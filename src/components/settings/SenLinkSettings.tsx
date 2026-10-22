@@ -38,6 +38,7 @@ import {
   type SenLinkSettings as Settings,
   type SenLinkStatus,
 } from '../../lib/coworkApi';
+import { PeerApps } from './PeerApps';
 
 const { Text, Paragraph } = Typography;
 
@@ -831,6 +832,11 @@ export const SenLinkSettings: React.FC = () => {
                       label: t('Knowledge'),
                       children: <PeerKnowledge peer={p} onPeer={(u) => setPeers((ps) => ps.map((x) => (x.id === u.id ? u : x)))} />,
                     },
+                    {
+                      key: 'apps',
+                      label: t('Apps'),
+                      children: <PeerApps peer={p} onChanged={load} />,
+                    },
                   ]}
                 />
               ),
@@ -844,6 +850,11 @@ export const SenLinkSettings: React.FC = () => {
                     {policyOpen(p.knowledge) && (
                       <Tooltip title={t('This peer may ask what you know. Open the row, Knowledge tab, to see what.')}>
                         <Tag color="purple">{t('shares knowledge')}</Tag>
+                      </Tooltip>
+                    )}
+                    {Object.keys(p.appSync ?? {}).length > 0 && (
+                      <Tooltip title={t('Some apps are open to this peer. Open the row, Apps tab, to see which.')}>
+                        <Tag color="geekblue">{t('syncs apps')}</Tag>
                       </Tooltip>
                     )}
                   </Space>

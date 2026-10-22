@@ -37,7 +37,99 @@ export interface SenLinkPeer {
   online: boolean;
   /** What it may read of this machine's knowledge. Closed until a person opens it. */
   knowledge: SenLinkKnowledgePolicy;
+  /** What it may do with each Space App's data, by app id. Absent app = closed. */
+  appSync: Record<string, SenLinkAppPolicy>;
   createdAt: string;
+}
+
+// ---- syncing a Space App's data with a peer ----
+
+export type SenLinkSyncDirection = 'off' | 'send' | 'receive' | 'both';
+
+/** What one peer may do with one app's data on this machine. Both ends must allow a collection for it to move. */
+export interface SenLinkAppPolicy {
+  /** Collection id → direction; absent = off. */
+  collections: Record<string, SenLinkSyncDirection>;
+  /** Let passwords and keys cross, both ways. Turning it on must be confirmed (`confirmSecrets`). */
+  secrets: boolean;
+  /** Fold a record that arrives under another id into the one already here when they mean the same. */
+  adoptMatches: boolean;
+}
+
+export interface SenLinkAppCollection {
+  id: string;
+  schemaVersion: number;
+  /** Never leave this machine unless `secrets` is on. */
+  secretFields: string[];
+  /** Never leave this machine at all (e.g. whether a tunnel is open). */
+  localFields: string[];
+  matchKey: string[];
+  guardFields: string[];
+}
+
+/** A change waiting for a person: one record and why. */
+export interface SenLinkHeld {
+  collection: string;
+  id: string;
+  reason: string;
+  name: string | null;
+  /** `incoming`: a peer pushed it; `pull`: a sync run here found it. */
+  from: 'incoming' | 'pull';
+}
+
+export interface SenLinkAppView {
+  app: string;
+  version: string | null;
+  syncVersion: number;
+  collections: SenLinkAppCollection[];
+  policy: SenLinkAppPolicy;
+  status: { pending: SenLinkHeld[]; last: { at: number; pull: Record<string, number>; push: Record<string, number> } | null };
+}
+
+export interface SenLinkRemoteApp {
+  app: string;
+  version: string | null;
+  syncVersion: number;
+  collections: string[];
+}
+
+export interface SenLinkAppList {
+  apps: SenLinkAppView[];
+  /** What the peer has opened to this machine; `{error}` when it could not be asked; null when SLink is off. */
+  remote: { apps: SenLinkRemoteApp[] } | { error: string } | null;
+}
+
+export interface SenLinkSyncItem {
+  collection: string;
+  id: string;
+  status: string;
+  reason?: string;
+  matched?: string;
+  warnings?: string[];
+}
+
+export interface SenLinkSyncSide {
+  dryRun: boolean;
+  results: SenLinkSyncItem[];
+  summary: Record<string, number>;
+}
+
+export interface SenLinkSyncReport {
+  app: string;
+  peer: { id: string; name: string };
+  dryRun: boolean;
+  plan: { collection: string; pull: boolean; push: boolean; why: string | null }[];
+  /** What happened here (records taken from the peer). */
+  pull: SenLinkSyncSide;
+  /** What the peer did with what was sent to it. */
+  push: SenLinkSyncSide;
+  held: SenLinkHeld[];
+}
+
+export interface SenLinkSyncOptions {
+  /** Held changes this run may apply (only changes that were held). */
+  approve?: { collection: string; id: string }[];
+  collections?: string[];
 }
 
 /** What one peer may read of this machine's knowledge (`PATCH /peers/:id {knowledge}` replaces it). */
@@ -191,6 +283,16 @@ export const senLinkApi = {
     apiPost<SenLinkRecall>(`/api/sen-link/peers/${encodeURIComponent(id)}/recall`, { query, ...opts }),
   send: (id: string, text: string, opts: { taskId?: string; worktree?: boolean } = {}) =>
     apiPost<{ task: A2ATask }>(`/api/sen-link/peers/${encodeURIComponent(id)}/messages`, { text, ...opts }),
+  /** Apps on this machine that can sync, with this peer's policy for each, and what the peer has opened to us. */
+  appSync: (id: string) => apiGet<SenLinkAppList>(`/api/sen-link/peers/${encodeURIComponent(id)}/app-sync`),
+  /** Set what this peer may do with one app. Passwords and keys need `confirmSecrets`; an empty policy closes the app. */
+  putAppSync: (id: string, app: string, policy: SenLinkAppPolicy, confirmSecrets = false) =>
+    apiPut<SenLinkAppView>(`/api/sen-link/peers/${encodeURIComponent(id)}/app-sync/${encodeURIComponent(app)}`, { policy, confirmSecrets }),
+  /** What a sync would do on both machines. Changes nothing. A 409 carries `code` (not_open, app_unavailable, schema_mismatch). */
+  previewAppSync: (id: string, app: string, opts: SenLinkSyncOptions = {}) =>
+    apiPost<SenLinkSyncReport>(`/api/sen-link/peers/${encodeURIComponent(id)}/app-sync/${encodeURIComponent(app)}/preview`, opts),
+  runAppSync: (id: string, app: string, opts: SenLinkSyncOptions = {}) =>
+    apiPost<SenLinkSyncReport>(`/api/sen-link/peers/${encodeURIComponent(id)}/app-sync/${encodeURIComponent(app)}/run`, opts),
   tasks: (id: string) => apiGet<{ tasks: A2ATask[] }>(`/api/sen-link/peers/${encodeURIComponent(id)}/tasks`),
   cancel: (id: string, taskId: string) =>
     apiPost<A2ATask>(`/api/sen-link/peers/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/cancel`),
