@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Typography, Switch, Card, Space, Spin, message, Divider } from 'antd';
-import { ThunderboltOutlined, BulbOutlined, SyncOutlined, DatabaseOutlined } from '@ant-design/icons';
+import {
+  ThunderboltOutlined,
+  BulbOutlined,
+  SyncOutlined,
+  DatabaseOutlined,
+  CompressOutlined,
+} from '@ant-design/icons';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -9,6 +15,7 @@ interface AgentBehavior {
   preCognitive: boolean;
   memoryRecall: boolean;
   afterProcess: boolean;
+  contextCompression: boolean;
 }
 
 /**
@@ -21,6 +28,9 @@ interface AgentBehavior {
  * **After-process stages** — run after the main agent turn.
  *   - afterProcess: context update / conversation synthesis (Claude-Code style).
  *
+ * **Context** — what the agent is sent on every call.
+ *   - contextCompression: shrink long tool results once, where they are created.
+ *
  * Persisted globally (~/.senclaw/config.json) via `/api/agent-behavior` and
  * read per-turn by the daemon, so flips take effect on the next message.
  */
@@ -30,6 +40,7 @@ export const AgentBehaviorSettings: React.FC = () => {
     preCognitive: false,
     memoryRecall: false,
     afterProcess: false,
+    contextCompression: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<keyof AgentBehavior | null>(null);
@@ -154,6 +165,24 @@ export const AgentBehaviorSettings: React.FC = () => {
           'Update context',
           'After each turn, synthesise and update the conversation context (inspired by Claude Code). The agent analyses recent messages, extracts key information, and compacts the context so future turns stay accurate and token-efficient without losing important history.',
           'afterProcess'
+        )}
+      </Space>
+
+      <Divider />
+
+      {/* ── Context ──────────────────────────────────────────── */}
+      <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
+        Context
+      </Title>
+      <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+        What the agent is sent on every call of a conversation.
+      </Paragraph>
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        {row(
+          <CompressOutlined />,
+          'Context compression',
+          "Shrink a long tool result (a JSON list, a build log) once, where it is created, instead of re-sending all of it with every later message — fewer tokens and a faster reply. Errors, unusual rows, the start and the end are kept; the full result is saved to a file the agent can read back. File contents (Read / Edit) are never touched. On by default.",
+          'contextCompression'
         )}
       </Space>
     </div>
