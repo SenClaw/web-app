@@ -707,5 +707,14 @@
   "versions differ": "khác phiên bản",
   "waiting": "đang chờ",
   "{name} has not opened it": "{name} chưa mở",
-  "{name} has opened it": "{name} đã mở"
+  "{name} has opened it": "{name} đã mở",
+  "Full": "Toàn quyền",
+  "Code sessions": "Phiên code",
+  "Approval cards while the agent writes code. Changes take effect on the next message.": "Thẻ xin duyệt khi agent viết code. Thay đổi có hiệu lực từ tin nhắn kế tiếp.",
+  "Approvals in code sessions": "Duyệt trong phiên code",
+  "How much the agent may do without asking you first.": "Agent được tự làm đến đâu mà không hỏi bạn trước.",
+  "Every command and every file edit asks first.": "Mọi lệnh và mọi lần sửa tệp đều hỏi trước.",
+  "Edits inside the project and build, test, lint and local git commands run on their own; anything that leaves the project or cannot be undone still asks, and the card says why.": "Sửa tệp trong dự án và các lệnh build, test, lint, git cục bộ chạy luôn; việc ra ngoài dự án hoặc không hoàn tác được vẫn hỏi, thẻ ghi rõ lý do.",
+  "Nothing asks: every command and edit runs on its own, including ones that cannot be undone.": "Không hỏi gì: mọi lệnh và mọi lần sửa đều chạy luôn, kể cả việc không hoàn tác được.",
+  "Auto and Full apply only in code sessions and in folders that are git repositories — places where a checkpoint can undo the change. Other chats keep asking, whatever you choose here.": "Tự động và Toàn quyền chỉ có hiệu lực trong phiên code và trong thư mục là kho git — nơi điểm khôi phục hoàn tác được thay đổi. Các cuộc trò chuyện khác vẫn hỏi như cũ, dù bạn chọn gì ở đây."
 }

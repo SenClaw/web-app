@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Typography, Switch, Card, Space, Spin, message, Divider } from 'antd';
+import { useLang } from '../../i18n';
+import { CodeAutonomyControl, type CodeAutonomy } from './CodeAutonomyControl';
 import {
   ThunderboltOutlined,
   BulbOutlined,
@@ -16,7 +18,11 @@ interface AgentBehavior {
   memoryRecall: boolean;
   afterProcess: boolean;
   contextCompression: boolean;
+  /** Absent from a daemon that predates code autonomy: the control is then hidden. */
+  codeAutonomy?: CodeAutonomy;
 }
+
+type ToggleKey = Exclude<keyof AgentBehavior, 'codeAutonomy'>;
 
 /**
  * Toggles for the process stages:
@@ -31,10 +37,15 @@ interface AgentBehavior {
  * **Context** — what the agent is sent on every call.
  *   - contextCompression: shrink long tool results once, where they are created.
  *
+ * **Code sessions** — how much a coding chat may do without an approval card.
+ *   - codeAutonomy: ask | auto | full (only auto/full change anything, and only
+ *     where a checkpoint can undo the change).
+ *
  * Persisted globally (~/.senclaw/config.json) via `/api/agent-behavior` and
  * read per-turn by the daemon, so flips take effect on the next message.
  */
 export const AgentBehaviorSettings: React.FC = () => {
+  const { t } = useLang();
   const [state, setState] = useState<AgentBehavior>({
     preTriggerSkill: false,
     preCognitive: false,
@@ -59,7 +70,7 @@ export const AgentBehaviorSettings: React.FC = () => {
     })();
   }, []);
 
-  const toggle = async (key: keyof AgentBehavior, value: boolean) => {
+  const save = async (key: keyof AgentBehavior, value: boolean | string) => {
     const prev = state;
     setState({ ...state, [key]: value }); // optimistic
     setSaving(key);
@@ -86,7 +97,7 @@ export const AgentBehaviorSettings: React.FC = () => {
     icon: React.ReactNode,
     title: string,
     desc: string,
-    key: keyof AgentBehavior
+    key: ToggleKey
   ) => (
     <Card size="small">
       <div
@@ -108,7 +119,7 @@ export const AgentBehaviorSettings: React.FC = () => {
         <Switch
           checked={state[key]}
           loading={saving === key}
-          onChange={(v) => toggle(key, v)}
+          onChange={(v) => save(key, v)}
         />
       </div>
     </Card>
@@ -185,6 +196,24 @@ export const AgentBehaviorSettings: React.FC = () => {
           'contextCompression'
         )}
       </Space>
+
+      {/* ── Code sessions ────────────────────────────────────── */}
+      {state.codeAutonomy && (
+        <>
+          <Divider />
+          <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
+            {t('Code sessions')}
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 12 }}>
+            {t('Approval cards while the agent writes code. Changes take effect on the next message.')}
+          </Paragraph>
+          <CodeAutonomyControl
+            value={state.codeAutonomy}
+            saving={saving === 'codeAutonomy'}
+            onChange={(v) => save('codeAutonomy', v)}
+          />
+        </>
+      )}
     </div>
   );
 };
