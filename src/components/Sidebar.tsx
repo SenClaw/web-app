@@ -38,6 +38,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import type { WsStatus, EventNotification, GroupInfo } from '../types';
 import { WorkflowSidebarSection } from './workflows/WorkflowSidebarSection';
 import { useLang } from '../i18n';
+import { useRunningProcessCount } from './BackgroundProcesses';
 import { useProjects } from '../hooks/useProjects';
 import type { Project } from '../lib/projectsApi';
 
@@ -60,7 +61,8 @@ const STATUS_DOT: Record<WsStatus, { color: string; animate: boolean }> = {
 };
 
 export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notifications, onMarkRead, onClearAll }: Props) {
-  const { t } = useLang();
+  const { t, tArgs } = useLang();
+  const runningProcesses = useRunningProcessCount();
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();
@@ -188,8 +190,15 @@ export function Sidebar({ status, isDarkMode, toggleTheme, sidebarContent, notif
             <Tooltip title={t('Knowledge')}>
               <Button type={isCognitive ? 'primary' : 'text'} size="small" icon={<DeploymentUnitOutlined />} onClick={() => navigate('/cognitive')} />
             </Tooltip>
-            <Tooltip title={t('Background tasks')}>
-              <Button type={isBackground ? 'primary' : 'text'} size="small" icon={<ClockCircleOutlined />} onClick={() => navigate('/background')} />
+            <Tooltip title={runningProcesses > 0 ? tArgs('Background tasks · {n} running', { n: runningProcesses }) : t('Background tasks')}>
+              <Badge count={runningProcesses} size="small" color="blue" offset={[-2, 2]}>
+                <Button
+                  type={isBackground ? 'primary' : 'text'}
+                  size="small"
+                  icon={<ClockCircleOutlined />}
+                  onClick={() => navigate(runningProcesses > 0 ? '/background?tab=processes' : '/background')}
+                />
+              </Badge>
             </Tooltip>
             <Tooltip title={t('Datagen')}>
               <Button type={isDatagen ? 'primary' : 'text'} size="small" icon={<ExperimentOutlined />} onClick={() => navigate('/datagen')} />

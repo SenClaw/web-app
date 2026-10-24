@@ -197,6 +197,12 @@ must not regress silently since nothing but a live daemon exercises them:
 in-flight `schedule_watch` with a Stop button, and **dispatch retry**
 (`InlineDispatchCard.tsx`, `POST /api/dispatch/{tasks,parents}/:id/retry`)
 lets a user re-run a failed DAG task or parent from the chat itself.
+**Background processes** (`BackgroundProcesses.tsx` + `src/lib/bgTasks.ts`, `GET /api/bg-tasks`)
+are what an agent left running (a dev server): the strip above the composer lists this
+chat's, the Processes tab of `/background` lists every chat's, the sidebar's Background
+button carries a count. Polled every 3 s, never pushed; Stop and Dismiss show the daemon's
+refusal text (409) rather than a generic error. They share the word "Background tasks" with
+the *scheduled* runs of `BackgroundPage` and are not the same thing — the tab labels say which.
 
 ## Testing
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Button, Drawer, Empty, Form, Input, InputNumber, Layout, Modal, Select, Space, Spin,
-  Switch, Table, Tag, Tooltip, Typography, message, theme,
+  Badge, Button, Drawer, Empty, Form, Input, InputNumber, Layout, Modal, Select, Space, Spin,
+  Switch, Table, Tabs, Tag, Tooltip, Typography, message, theme,
 } from 'antd';
 import {
   CaretRightOutlined, DeleteOutlined, EditOutlined, PauseOutlined, PlusOutlined,
@@ -9,6 +10,7 @@ import {
 } from '@ant-design/icons';
 
 import { AppLayout } from '../components/AppLayout';
+import { BackgroundProcessesPanel, useRunningProcessCount } from '../components/BackgroundProcesses';
 import { useLang } from '../i18n';
 
 const { Content } = Layout;
@@ -19,6 +21,10 @@ const { Title, Text, Paragraph } = Typography;
  * session**, which is what separates it from Settings → Schedules. Both
  * Flutter clients have had this screen; the web had no way to see, let alone
  * pause, a task running on the user's own machine.
+ *
+ * The other tab, Processes, is a different thing under the same word: the
+ * programs an agent started from a chat and left running (a dev server), with
+ * a Stop button. `?tab=processes` opens it directly (the chat strip links here).
  */
 
 interface BackgroundTask {
@@ -102,6 +108,9 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function BackgroundPage() {
   const { token } = theme.useToken();
   const { t } = useLang();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'processes' ? 'processes' : 'scheduled';
+  const runningProcesses = useRunningProcessCount();
 
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -311,35 +320,59 @@ export function BackgroundPage() {
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
             <div style={{ flex: 1 }}>
               <Title level={2} style={{ margin: 0 }}>{t('Background tasks')}</Title>
-              <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                {t('Work that runs on its own schedule with no chat session. Nothing replies to you here — a task reports through its run history, or an OS notification.')}
-              </Paragraph>
+              {tab === 'scheduled' && (
+                <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  {t('Work that runs on its own schedule with no chat session. Nothing replies to you here — a task reports through its run history, or an OS notification.')}
+                </Paragraph>
+              )}
             </div>
-            <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('Reload')}</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor('new')}>
-                {t('New task')}
-              </Button>
-            </Space>
+            {tab === 'scheduled' && (
+              <Space>
+                <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('Reload')}</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor('new')}>
+                  {t('New task')}
+                </Button>
+              </Space>
+            )}
           </div>
 
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-              <Spin size="large" />
-            </div>
-          ) : tasks.length === 0 ? (
-            <Empty description={t('No background tasks yet')} />
-          ) : (
-            <Table<BackgroundTask>
-              rowKey="id"
-              dataSource={tasks}
-              columns={columns}
-              size="small"
-              pagination={false}
-              onRow={task => ({ onClick: () => void openRuns(task) })}
-              style={{ background: token.colorBgContainer, borderRadius: 12 }}
-            />
-          )}
+          <Tabs
+            activeKey={tab}
+            onChange={key => setParams(key === 'processes' ? { tab: 'processes' } : {}, { replace: true })}
+            items={[
+              {
+                key: 'scheduled',
+                label: t('Scheduled'),
+                children: loading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+                    <Spin size="large" />
+                  </div>
+                ) : tasks.length === 0 ? (
+                  <Empty description={t('No background tasks yet')} />
+                ) : (
+                  <Table<BackgroundTask>
+                    rowKey="id"
+                    dataSource={tasks}
+                    columns={columns}
+                    size="small"
+                    pagination={false}
+                    onRow={task => ({ onClick: () => void openRuns(task) })}
+                    style={{ background: token.colorBgContainer, borderRadius: 12 }}
+                  />
+                ),
+              },
+              {
+                key: 'processes',
+                label: (
+                  <Space size={6}>
+                    {t('Processes')}
+                    {runningProcesses > 0 && <Badge count={runningProcesses} size="small" color="blue" />}
+                  </Space>
+                ),
+                children: <BackgroundProcessesPanel />,
+              },
+            ]}
+          />
         </Content>
       </Layout>
 
