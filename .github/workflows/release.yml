@@ -30,7 +30,13 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: |
+          # The version Settings → General shows: tag v0.2.9 builds as 0.2.9;
+          # a manual run falls back to the commit (vite.config.ts).
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            export SENCLAW_WEB_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          npm run build
 
       - name: Pack dist
         run: |

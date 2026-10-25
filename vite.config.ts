@@ -1,6 +1,20 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { execSync } from 'child_process';
+
+// The version Settings → General shows for this console. Release CI passes the
+// tag's version in SENCLAW_WEB_VERSION; any other build names its commit.
+function appVersion(): string {
+  if (process.env.SENCLAW_WEB_VERSION) return process.env.SENCLAW_WEB_VERSION;
+  try {
+    return execSync('git describe --tags --always --dirty', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'dev';
+  }
+}
 
 // Dev/preview proxy target for /api — the daemon's UI port. Defaults to the
 // real daemon's port (18788); point it at a disposable test daemon instead
@@ -14,6 +28,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion()),
+    },
     server: {
       // Dev mode: proxy /api to UIServer
       proxy: {

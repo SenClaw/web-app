@@ -716,5 +716,13 @@
   "Every command and every file edit asks first.": "Mọi lệnh và mọi lần sửa tệp đều hỏi trước.",
   "Edits inside the project and build, test, lint and local git commands run on their own; anything that leaves the project or cannot be undone still asks, and the card says why.": "Sửa tệp trong dự án và các lệnh build, test, lint, git cục bộ chạy luôn; việc ra ngoài dự án hoặc không hoàn tác được vẫn hỏi, thẻ ghi rõ lý do.",
   "Nothing asks: every command and edit runs on its own, including ones that cannot be undone.": "Không hỏi gì: mọi lệnh và mọi lần sửa đều chạy luôn, kể cả việc không hoàn tác được.",
-  "Auto and Full apply only in code sessions and in folders that are git repositories — places where a checkpoint can undo the change. Other chats keep asking, whatever you choose here.": "Tự động và Toàn quyền chỉ có hiệu lực trong phiên code và trong thư mục là kho git — nơi điểm khôi phục hoàn tác được thay đổi. Các cuộc trò chuyện khác vẫn hỏi như cũ, dù bạn chọn gì ở đây."
+  "Auto and Full apply only in code sessions and in folders that are git repositories — places where a checkpoint can undo the change. Other chats keep asking, whatever you choose here.": "Tự động và Toàn quyền chỉ có hiệu lực trong phiên code và trong thư mục là kho git — nơi điểm khôi phục hoàn tác được thay đổi. Các cuộc trò chuyện khác vẫn hỏi như cũ, dù bạn chọn gì ở đây.",
+  "Web console": "Bảng điều khiển web",
+  "Reading the core version…": "Đang đọc phiên bản core…",
+  "The running core did not report its version.": "Core đang chạy không báo phiên bản.",
+  "Running from {path}": "Chạy từ {path}",
+  "App bundle": "Trong bundle ứng dụng",
+  "Standalone install": "Cài riêng",
+  "This core ships inside SenClaw Desktop and is updated with the app.": "Core này nằm trong SenClaw Desktop và được cập nhật cùng ứng dụng.",
+  "A development build: rebuild it from source to change it.": "Bản build dev: muốn thay thì build lại từ mã nguồn."
 }
