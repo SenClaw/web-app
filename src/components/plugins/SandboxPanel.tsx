@@ -44,6 +44,15 @@ const STRINGS = {
     ready: 'ready',
     notAvailable: 'no',
     policyTitle: 'Security enforcement — run through the sandbox',
+    enabledTitle: 'Sandbox',
+    enabledDesc:
+      'On by default. Off: Python / Node.js snippets, agent Bash and scheduled scripts run as ordinary processes on this machine, with no confinement. Runs are recorded as isolation "none".',
+    enabledOffConfirmTitle: 'Turn the sandbox off?',
+    enabledOffConfirmDesc:
+      'Code will run with your full user permissions: it can read and change any file you can, and use the network.',
+    enabledOffConfirmOk: 'Turn off',
+    enabledOffWarn:
+      'The sandbox is OFF. Code runs unconfined. Exec and scheduler switches below are ignored until it is back on.',
     execTitle: 'Exec (agent Bash tool)',
     execDesc:
       "Agent shell commands run inside the OS sandbox and can only write to the chat's working directory. Note: build caches outside the workspace (npm/cargo…) will be blocked from writing.",
@@ -55,9 +64,10 @@ const STRINGS = {
     schedDesc: 'script / script-agent task commands run in a throwaway sandbox.',
     runPythonTitle: 'Run Python',
     runPythonDesc:
-      'Allow real Python (REPL /api/code/run + sbx tools). Always sandboxed; switching off refuses to run.',
+      'Allow real Python (REPL /api/code/run + sbx tools). Sandboxed unless the sandbox is switched off above; switching this off refuses to run.',
     runNodeTitle: 'Run Node.js',
-    runNodeDesc: 'Allow real Node.js. Always sandboxed; switching off refuses to run.',
+    runNodeDesc:
+      'Allow real Node.js. Sandboxed unless the sandbox is switched off above; switching this off refuses to run.',
     codeNetTitle: 'Network for Python/Node',
     codeNetDesc: 'Off by default — enable when a snippet needs network access.',
     sessionsTitle: (n: number) => `Managed sandboxes (${n})`,
@@ -121,6 +131,15 @@ const STRINGS = {
     ready: 'sẵn sàng',
     notAvailable: 'không',
     policyTitle: 'Cơ chế bảo mật — chạy trên sandbox',
+    enabledTitle: 'Sandbox',
+    enabledDesc:
+      'Mặc định bật. Tắt: snippet Python / Node.js, Bash của agent và script hẹn giờ chạy như tiến trình thường trên máy này, không bị cô lập. Lượt chạy được ghi là isolation "none".',
+    enabledOffConfirmTitle: 'Tắt sandbox?',
+    enabledOffConfirmDesc:
+      'Code sẽ chạy với đầy đủ quyền của bạn: đọc/sửa được mọi file bạn có quyền và dùng được mạng.',
+    enabledOffConfirmOk: 'Tắt',
+    enabledOffWarn:
+      'Sandbox đang TẮT. Code chạy không bị cô lập. Các công tắc Exec và scheduler bên dưới bị bỏ qua cho tới khi bật lại.',
     execTitle: 'Exec (tool Bash của agent)',
     execDesc:
       'Lệnh shell của agent chạy trong OS sandbox, chỉ được ghi vào thư mục làm việc của chat. Lưu ý: build cache ngoài workspace (npm/cargo…) sẽ bị chặn ghi.',
@@ -132,9 +151,10 @@ const STRINGS = {
     schedDesc: 'Lệnh của task chế độ script/script-agent chạy trong sandbox dùng-một-lần.',
     runPythonTitle: 'Run Python',
     runPythonDesc:
-      'Cho phép chạy Python thật (REPL /api/code/run + tool sbx). Luôn trong sandbox; tắt là từ chối chạy.',
+      'Cho phép chạy Python thật (REPL /api/code/run + tool sbx). Chạy trong sandbox trừ khi đã tắt sandbox ở trên; tắt công tắc này là từ chối chạy.',
     runNodeTitle: 'Run Node.js',
-    runNodeDesc: 'Cho phép chạy Node.js thật. Luôn trong sandbox; tắt là từ chối chạy.',
+    runNodeDesc:
+      'Cho phép chạy Node.js thật. Chạy trong sandbox trừ khi đã tắt sandbox ở trên; tắt công tắc này là từ chối chạy.',
     codeNetTitle: 'Mạng cho Python/Node',
     codeNetDesc: 'Mặc định tắt — bật khi snippet cần gọi mạng.',
     sessionsTitle: (n: number) => `Luồng đang quản lý (${n})`,
@@ -266,6 +286,8 @@ interface Stats {
 }
 
 interface ExecPolicy {
+  /** Master switch. Absent on a daemon older than the switch: hide the control. */
+  enabled?: boolean;
   execShell: boolean;
   execNetwork: boolean;
   execFsMode: string;
@@ -653,6 +675,35 @@ export function SandboxPanel() {
 
         {policy && (
           <Card title={L.policyTitle} size="small" style={{ marginTop: 16 }}>
+            {policy.enabled !== undefined && (
+              <div style={{ marginBottom: 16 }}>
+                <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <span>
+                    <Text strong>{L.enabledTitle}</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {L.enabledDesc}
+                    </Text>
+                  </span>
+                  {policy.enabled ? (
+                    <Popconfirm
+                      title={L.enabledOffConfirmTitle}
+                      description={L.enabledOffConfirmDesc}
+                      okText={L.enabledOffConfirmOk}
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => savePolicy({ enabled: false })}
+                    >
+                      <Switch checked />
+                    </Popconfirm>
+                  ) : (
+                    <Switch checked={false} onChange={() => savePolicy({ enabled: true })} />
+                  )}
+                </Space>
+                {!policy.enabled && (
+                  <Alert type="warning" showIcon style={{ marginTop: 8 }} message={L.enabledOffWarn} />
+                )}
+              </div>
+            )}
             <Row gutter={[24, 12]}>
               <Col xs={24} md={12}>
                 <Space direction="vertical" style={{ width: '100%' }}>
@@ -664,7 +715,11 @@ export function SandboxPanel() {
                         {L.execDesc}
                       </Text>
                     </span>
-                    <Switch checked={policy.execShell} onChange={(v) => savePolicy({ execShell: v })} />
+                    <Switch
+                      checked={policy.execShell}
+                      disabled={policy.enabled === false}
+                      onChange={(v) => savePolicy({ execShell: v })}
+                    />
                   </Space>
                   {policy.execShell && (
                     <Space size="large" style={{ paddingLeft: 12 }}>
@@ -723,6 +778,7 @@ export function SandboxPanel() {
                     </span>
                     <Switch
                       checked={policy.schedulerScript}
+                      disabled={policy.enabled === false}
                       onChange={(v) => savePolicy({ schedulerScript: v })}
                     />
                   </Space>
