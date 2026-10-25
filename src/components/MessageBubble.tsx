@@ -103,13 +103,13 @@ function SparkleIcon({ className }: { className?: string }) {
 }
 
 
-const WIDGET_FENCE_LANGS = new Set<string>(['widget', 'chart', 'weather', 'clock', 'video', 'audio', 'image']);
+const WIDGET_FENCE_LANGS = new Set<string>(['widget', 'chart', 'weather', 'clock', 'video', 'audio', 'image', 'plan']);
 
 /**
  * Try to interpret a fenced code block as a chat widget.
  *  - ```widget → body is a full WidgetSpec `{kind,title,data}` (incl. kind "app")
- *  - ```chart / ```weather / ```clock / ```video / ```audio / ```image → body is
- *    the kind-specific `data`, wrapped into `{ kind: <lang>, data: <json> }`.
+ *  - ```chart / ```weather / ```clock / ```video / ```audio / ```image / ```plan
+ *    → body is the kind-specific `data`, wrapped into `{ kind: <lang>, data: <json> }`.
  * Returns null (→ render as normal code) when the language isn't a widget
  * fence or the body isn't yet valid JSON (e.g. still streaming).
  */

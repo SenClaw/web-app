@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { theme } from 'antd';
+import { CheckOutlined, DownOutlined, ScheduleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -16,6 +17,7 @@ import {
 import type {
   WidgetSpec, ChartData, ChartSeries, ChartPoint, ImageData, ClockData,
   WeatherData, WeatherIcon, VideoData, AudioData, AppWidgetData,
+  PlanData, PlanItem, PlanItemStatus,
 } from '../types';
 import { getWidgetCatalog } from '../utils/flowDefaults';
 
@@ -643,6 +645,107 @@ function WeatherWidget({ data }: { data: WeatherData }) {
   );
 }
 
+// ===== Plan (live task checklist) =====
+
+/** Round checkbox per status — matches the ZCode-style card: filled+check for
+ *  completed, spinning ring for in-progress, hollow ring for pending. */
+function PlanCircle({ status }: { status: PlanItemStatus }) {
+  const { token } = theme.useToken();
+  if (status === 'completed') {
+    return (
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full flex-shrink-0"
+        style={{ background: token.colorSuccessBg, border: `1px solid ${token.colorSuccessBorder}` }}
+      >
+        <CheckOutlined style={{ fontSize: 10, color: token.colorSuccess }} />
+      </span>
+    );
+  }
+  if (status === 'in_progress') {
+    return (
+      <span
+        aria-hidden
+        className="inline-block w-4 h-4 rounded-full border-2 animate-spin flex-shrink-0"
+        style={{ borderColor: token.colorPrimary, borderTopColor: 'transparent' }}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className="inline-block w-4 h-4 rounded-full flex-shrink-0"
+      style={{ border: `1.5px solid ${token.colorBorder}` }}
+    />
+  );
+}
+
+/**
+ * A live task checklist card. Owns its whole card (shell + header + rows):
+ * unlike the other kinds the header is part of the widget — a list icon, the
+ * title, a `done/total` count and a collapse chevron. Rows: completed → dimmed
+ * text (no strikethrough), in-progress → normal text + its `activeForm` when
+ * present, pending → muted text. The daemon re-emits the card with the SAME id
+ * on every TodoWrite, so what the user sees is one card flipping statuses.
+ */
+function PlanWidget({ title, data }: { title?: string; data: PlanData }) {
+  const { token } = theme.useToken();
+  const [collapsed, setCollapsed] = useState(false);
+  const items = (Array.isArray(data.items) ? data.items : []).filter(
+    (it): it is PlanItem => !!it && typeof it.content === 'string',
+  );
+  if (!items.length) return <ErrorChip label="Plan has no items" />;
+  const done = items.filter(it => it.status === 'completed').length;
+
+  return (
+    <div
+      className="rounded-2xl border p-3 shadow-sm max-w-[80%]"
+      style={{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }}
+    >
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-1 mb-1 text-left"
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <ScheduleOutlined style={{ fontSize: 14, color: token.colorTextSecondary }} />
+        <span className="text-[13px] font-semibold flex-1 truncate" style={{ color: token.colorText }}>
+          {title || 'Kế hoạch'}
+        </span>
+        <span className="text-xs tabular-nums" style={{ color: token.colorTextTertiary }}>
+          {done}/{items.length}
+        </span>
+        <DownOutlined
+          style={{ fontSize: 10, color: token.colorTextTertiary, transform: collapsed ? undefined : 'rotate(180deg)' }}
+        />
+      </button>
+      {!collapsed && (
+        <div className="flex flex-col gap-2 pt-1">
+          {items.map((it, i) => {
+            const inProgress = it.status === 'in_progress';
+            const textColor =
+              it.status === 'completed' ? token.colorTextQuaternary
+              : inProgress ? token.colorText
+              : token.colorTextTertiary;
+            return (
+              <div key={i} className="flex items-start gap-2.5 px-1">
+                <span className="mt-0.5">
+                  <PlanCircle status={it.status} />
+                </span>
+                <div
+                  className={`flex-1 min-w-0 text-[13px] leading-relaxed ${inProgress ? 'font-medium' : ''}`}
+                  style={{ color: textColor }}
+                >
+                  {inProgress && it.activeForm ? it.activeForm : it.content}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== Dispatcher =====
 
 export function WidgetCard({ widget }: { widget: WidgetSpec }) {
@@ -660,6 +763,9 @@ export function WidgetCard({ widget }: { widget: WidgetSpec }) {
     case 'video':  body = <VideoWidget data={data} />; break;
     case 'audio':  body = <AudioWidget data={data} />; break;
     case 'app':    body = <AppWidgetFrame data={data} />; break;
+    // Owns its whole card (header + collapse) — returned directly, not wrapped
+    // in CardShell, so the title doesn't render twice.
+    case 'plan':   return <PlanWidget title={widget.title} data={data} />;
     default:       body = <ErrorChip label={`Unknown widget kind: ${String(widget.kind)}`} />;
   }
 

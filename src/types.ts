@@ -195,7 +195,7 @@ export interface FormMessage {
 
 // ===== Chat Widgets (one-way inline rich cards) =====
 
-export type WidgetKind = 'chart' | 'image' | 'clock' | 'weather' | 'video' | 'audio' | 'app';
+export type WidgetKind = 'chart' | 'image' | 'clock' | 'weather' | 'video' | 'audio' | 'plan' | 'app';
 
 export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'scatter';
 
@@ -296,6 +296,27 @@ export interface AudioData {
   mime?: string;
 }
 
+export type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
+
+/** One checklist row of a `plan` widget (same shape as a TodoWrite item). */
+export interface PlanItem {
+  content: string;
+  status: PlanItemStatus;
+  /** Present-tense label shown for the in-progress row ("Đang đọc code"). */
+  activeForm?: string;
+}
+
+/** kind `plan` — a live task checklist that updates IN PLACE: every re-emit
+ *  with the same widget id (the daemon derives it from the chat + planId)
+ *  replaces the previous card instead of stacking a new one. */
+export interface PlanData {
+  items: PlanItem[];
+  /** Optional id scoping which card this updates (daemon-side concern). */
+  planId?: string;
+  /** Set when the card was auto-emitted by the TodoWrite tool. */
+  source?: string;
+}
+
 /** kind `app` — a Space-App / plugin widget resolved by the daemon registry. */
 export interface AppWidgetData {
   /** App id (deep link target: /space/app/<app>). */
@@ -323,6 +344,7 @@ export interface WidgetSpec {
     | WeatherData
     | VideoData
     | AudioData
+    | PlanData
     | AppWidgetData
     | Record<string, unknown>;
 }

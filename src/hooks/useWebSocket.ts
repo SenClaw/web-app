@@ -983,14 +983,24 @@ export function useWebSocket(): WsHook {
             break;
           }
           case 'chat:widget': {
-            // One-way rich inline widget push (chart/image/clock/weather).
-            // Mirrors tool:execution: append a WidgetMessage to that jid.
+            // One-way rich inline widget push (chart/image/clock/weather/plan).
+            // Mirrors tool:execution — but a `plan` card re-emits with the SAME
+            // id on every TodoWrite (update-in-place), so replace an existing
+            // message with that id instead of stacking a new card.
             const jid = msg.groupJid as string;
-            addMessage(jid, {
+            const widgetMsg: ChatMessage = {
               id:        (msg.id as string) ?? `widget-${jid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               role:      'widget',
               widget:    msg.widget as WidgetSpec,
               timestamp: (msg.ts as string) ?? new Date().toISOString(),
+            };
+            setMessages(prev => {
+              const list = prev[jid] ?? [];
+              const idx = list.findIndex(m => m.id === widgetMsg.id);
+              if (idx === -1) return { ...prev, [jid]: [...list, widgetMsg] };
+              const next = [...list];
+              next[idx] = widgetMsg;
+              return { ...prev, [jid]: next };
             });
             break;
           }
