@@ -3,6 +3,7 @@ import { Typography, Switch, Card, Space, message, Spin, theme } from 'antd';
 import { SafetyCertificateOutlined, AlertOutlined } from '@ant-design/icons';
 import ApiAuthModeCard from './ApiAuthModeCard';
 import { LanguageCard } from './LanguageCard';
+import VersionCard from './VersionCard';
 import { useLang } from '../../i18n';
 
 const { Title, Text, Paragraph } = Typography;
@@ -78,6 +79,7 @@ export const GeneralSettings: React.FC = () => {
       <Title level={4} style={{ marginBottom: 24 }}>{t('General Settings')}</Title>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <VersionCard />
         <LanguageCard />
         <ApiAuthModeCard />
         <Card 
