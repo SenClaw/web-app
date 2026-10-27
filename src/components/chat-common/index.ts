@@ -7,6 +7,8 @@ export type { AgentCommandInputProps, AgentCommandItem } from './AgentCommandInp
 export { useCommandSuggestions } from './useCommandSuggestions';
 export type { FileScope, CommandSuggestions } from './useCommandSuggestions';
 
+export { specCommands } from './specCommands';
+
 export { CommonPermissionRequestCard } from './CommonPermissionRequestCard';
 export type {
   CommonPermissionRequestCardProps,

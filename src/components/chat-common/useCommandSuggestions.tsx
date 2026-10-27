@@ -229,18 +229,25 @@ export function useCommandSuggestions({
 
   const suggestions = React.useMemo(() => {
     if (!triggerState) return [];
+    // Commands are typed with `/` only; `#` keeps listing skills alone.
     const source =
       triggerState.trigger === '@'
         ? [...fileMentions, ...agentMentions, ...mcpMentions, ...mentionItems]
-        : [...commands, ...skills];
+        : triggerState.trigger === '/'
+          ? [...commands, ...skills]
+          : skills;
     const query = triggerState.query;
-    return source
-      .filter(i =>
-        i.key.toLowerCase().includes(query) ||
-        (i.desc ?? '').toLowerCase().includes(query) ||
-        (i.kind ?? '').toLowerCase().includes(query),
-      )
-      .slice(0, 14);
+    const matches = source.filter(i =>
+      i.key.toLowerCase().includes(query) ||
+      (i.desc ?? '').toLowerCase().includes(query) ||
+      (i.kind ?? '').toLowerCase().includes(query),
+    );
+    if (triggerState.trigger === '@') return matches.slice(0, 14);
+    // A name that starts with what was typed leads, so `/spec` + Enter picks
+    // `spec` and not `draft`, whose description merely mentions a spec.
+    const named = matches.filter(i => i.key.toLowerCase().startsWith(query));
+    const rest = matches.filter(i => !i.key.toLowerCase().startsWith(query));
+    return [...named, ...rest].slice(0, 14);
   }, [triggerState, commands, mentionItems, skills, agentMentions, mcpMentions, fileMentions]);
 
   React.useEffect(() => {

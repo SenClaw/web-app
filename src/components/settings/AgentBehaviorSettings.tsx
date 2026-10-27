@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Typography, Switch, Card, Space, Spin, message, Divider } from 'antd';
 import { useLang } from '../../i18n';
 import { CodeAutonomyControl, type CodeAutonomy } from './CodeAutonomyControl';
+import { SpecFlowControl, type SpecFlow } from './SpecFlowControl';
 import {
   ThunderboltOutlined,
   BulbOutlined,
@@ -20,9 +21,11 @@ interface AgentBehavior {
   contextCompression: boolean;
   /** Absent from a daemon that predates code autonomy: the control is then hidden. */
   codeAutonomy?: CodeAutonomy;
+  /** Absent from a daemon that predates the spec flow: the control is then hidden. */
+  specFlow?: SpecFlow;
 }
 
-type ToggleKey = Exclude<keyof AgentBehavior, 'codeAutonomy'>;
+type ToggleKey = Exclude<keyof AgentBehavior, 'codeAutonomy' | 'specFlow'>;
 
 /**
  * Toggles for the process stages:
@@ -37,9 +40,12 @@ type ToggleKey = Exclude<keyof AgentBehavior, 'codeAutonomy'>;
  * **Context** — what the agent is sent on every call.
  *   - contextCompression: shrink long tool results once, where they are created.
  *
- * **Code sessions** — how much a coding chat may do without an approval card.
+ * **Code sessions** — how much a coding chat may do without an approval card,
+ *   and whether it needs an approved spec first.
  *   - codeAutonomy: ask | auto | full (only auto/full change anything, and only
  *     where a checkpoint can undo the change).
+ *   - specFlow: required | on | off (design before code; the chat commands
+ *     /brainstorm, /draft, /review, /approve and /spec drive it).
  *
  * Persisted globally (~/.senclaw/config.json) via `/api/agent-behavior` and
  * read per-turn by the daemon, so flips take effect on the next message.
@@ -198,7 +204,7 @@ export const AgentBehaviorSettings: React.FC = () => {
       </Space>
 
       {/* ── Code sessions ────────────────────────────────────── */}
-      {state.codeAutonomy && (
+      {(state.codeAutonomy || state.specFlow) && (
         <>
           <Divider />
           <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
@@ -207,11 +213,22 @@ export const AgentBehaviorSettings: React.FC = () => {
           <Paragraph type="secondary" style={{ marginBottom: 12 }}>
             {t('Approval cards while the agent writes code. Changes take effect on the next message.')}
           </Paragraph>
-          <CodeAutonomyControl
-            value={state.codeAutonomy}
-            saving={saving === 'codeAutonomy'}
-            onChange={(v) => save('codeAutonomy', v)}
-          />
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            {state.codeAutonomy && (
+              <CodeAutonomyControl
+                value={state.codeAutonomy}
+                saving={saving === 'codeAutonomy'}
+                onChange={(v) => save('codeAutonomy', v)}
+              />
+            )}
+            {state.specFlow && (
+              <SpecFlowControl
+                value={state.specFlow}
+                saving={saving === 'specFlow'}
+                onChange={(v) => save('specFlow', v)}
+              />
+            )}
+          </Space>
         </>
       )}
     </div>

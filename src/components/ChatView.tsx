@@ -12,7 +12,7 @@ import { Progress, Tooltip, Typography, Drawer, Tabs, message } from 'antd';
 import { AudioMutedOutlined, AudioOutlined, HistoryOutlined, LoadingOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ChangesPanel } from './ChangesPanel';
 import { ReplayPanel } from './ReplayPanel';
-import { AgentCommandInput, CommonChatInput } from './chat-common';
+import { AgentCommandInput, CommonChatInput, specCommands } from './chat-common';
 import { ModelPicker } from './ModelPicker';
 import { ProfileBadge } from './ProfileBadge';
 import { InlineDispatchCard } from './InlineDispatchCard';
@@ -169,6 +169,9 @@ export function ChatView({ group, messages, agentState, usage, isCompacting, onS
     Math.max(0, sortedMessages.length - visibleCount),
   );
   const hasMore = sortedMessages.length > visibleCount;
+
+  // The spec-flow commands the daemon understands, offered first in the `/` menu.
+  const specCommandItems = useMemo(() => specCommands(t), [t]);
 
   // Shell-style ↑/↓ recall for the composer: the user's own prior messages in
   // this group, chronological, with consecutive duplicates collapsed.
@@ -802,7 +805,7 @@ export function ChatView({ group, messages, agentState, usage, isCompacting, onS
           onSubmit={handleActionButton}
           disabled={false /* typing while processing queues the message server-side */}
           sending={false}
-          commands={[]}
+          commands={specCommandItems}
           mentionItems={[]}
           fileScope={{ jid: group.jid }}
           actionButtonDisabled={actionButtonDisabled}
