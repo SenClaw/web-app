@@ -30,9 +30,11 @@ export function AppLayout({ sidebar, children, status }: Props) {
   const [expandedDock, setExpandedDock] = useState<ExpandedDock>(null);
   // After the user manually collapses, suppress this latest's auto-foreground.
   const [suppressedLatestAt, setSuppressedLatestAt] = useState<number | null>(null);
-  // The URL the Browser pane shows (a dev server, a port chip, user nav). Reset
-  // per chat; a `web` artifact drives it in the pane itself.
-  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  // What the Browser pane was last asked to open (a port chip). `seq` makes a
+  // second click on the same chip count. Reset per chat; a remote `web` artifact
+  // drives the pane itself.
+  const [browserRequest, setBrowserRequest] =
+    useState<{ url: string; seq: number } | null>(null);
 
   const activeJid = ws.activeJid;
   const workbenchState = activeJid ? (ws.workbench[activeJid] ?? null) : null;
@@ -61,13 +63,13 @@ export function AppLayout({ sidebar, children, status }: Props) {
   const { tasks: bgTasks } = useBgTasks({ chatJid: activeJid ?? undefined });
 
   // A fresh chat starts the browser blank (a `web` artifact still drives it).
-  useEffect(() => { setBrowserUrl(null); }, [activeJid]);
+  useEffect(() => { setBrowserRequest(null); }, [activeJid]);
 
   // A `:port` chip (or any openInBrowserPane caller) opens here.
   useEffect(
     () =>
       subscribeBrowserPane(url => {
-        setBrowserUrl(url);
+        setBrowserRequest(r => ({ url, seq: (r?.seq ?? 0) + 1 }));
         setExpandedDock('workbench');
       }),
     [],
@@ -151,7 +153,7 @@ export function AppLayout({ sidebar, children, status }: Props) {
         markViewed={wbMarkViewed}
         dockForm={dockForm}
         onResolveForm={ws.resolveForm}
-        browserUrl={browserUrl}
+        browserRequest={browserRequest}
         bgTasks={bgTasks}
         activeJid={activeJid}
       />

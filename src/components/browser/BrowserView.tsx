@@ -15,9 +15,13 @@ import { portUrl, type BgTask } from '../../lib/bgTasks';
 import { browserUrlFrom } from '../../lib/browserUrl';
 
 interface Props {
-  /** URL requested from outside the pane (a web artifact, a dev server, a port
-   * chip). A change here navigates the pane; internal navigation does not. */
+  /** URL requested from outside the pane (a remote web artifact, a port chip). A
+   * change here navigates the pane; internal navigation does not. */
   url: string | null;
+  /** Bumped by each request, so the same URL asked for again still navigates. */
+  urlKey?: number;
+  /** A web artifact on this machine: offered, never opened without a click. */
+  localArtifact?: { title: string; url: string } | null;
   bgTasks: BgTask[];
   activeJid: string | null;
 }
@@ -29,7 +33,7 @@ interface Props {
  * `X-Frame-Options`/`frame-ancestors` render blank — the ⇱ button opens the
  * current page in a real tab as the escape hatch.
  */
-export function BrowserView({ url, bgTasks, activeJid }: Props) {
+export function BrowserView({ url, urlKey = 0, localArtifact, bgTasks, activeJid }: Props) {
   const { token } = theme.useToken();
   const { t } = useLang();
 
@@ -59,11 +63,12 @@ export function BrowserView({ url, bgTasks, activeJid }: Props) {
 
   // React only to a NEW url *prop* (external open). Internal navigation leaves
   // the prop unchanged, so this never fights the address bar or back/forward.
-  const extRef = useRef<string | null>(url);
+  const extRef = useRef({ url, urlKey });
   useEffect(() => {
-    if (url && url !== extRef.current) go(url);
-    extRef.current = url;
-  }, [url, go]);
+    const prev = extRef.current;
+    if (url && (url !== prev.url || urlKey !== prev.urlKey)) go(url);
+    extRef.current = { url, urlKey };
+  }, [url, urlKey, go]);
 
   // Keep the address bar reflecting the page we're on (incl. back/forward),
   // and clear it on Home (current === null → the empty state).
@@ -140,6 +145,24 @@ export function BrowserView({ url, bgTasks, activeJid }: Props) {
           />
         </Tooltip>
       </div>
+
+      {localArtifact && browserUrlFrom(localArtifact.url) !== current && (
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 border-b flex-shrink-0 text-xs"
+          style={{ borderColor: token.colorBorderSecondary }}
+        >
+          <span
+            className="flex-1 min-w-0 truncate"
+            style={{ color: token.colorTextSecondary }}
+            title={localArtifact.url}
+          >
+            {localArtifact.title || localArtifact.url}
+          </span>
+          <Button size="small" type="primary" onClick={() => go(localArtifact.url)}>
+            {t('Open')}
+          </Button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0">
         {current ? (

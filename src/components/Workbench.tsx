@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import type { WorkbenchState, FormMessage } from '../types';
 import type { BgTask } from '../lib/bgTasks';
+import { isLoopbackUrl } from '../lib/browserUrl';
 import { StaticRenderer } from './workbench/StaticRenderer';
 import { BrowserView } from './browser/BrowserView';
 import { BackendRenderer } from './workbench/BackendRenderer';
@@ -47,22 +48,25 @@ interface Props {
   dockForm?: FormMessage | null;
   /** Submit / skip the dock form. */
   onResolveForm?: (requestId: string, values: Record<string, unknown>, submitted: boolean) => void;
-  /** URL the browser should show (dev server, port chip, user navigation). */
-  browserUrl?: string | null;
+  /** What the browser was asked to open (a port chip). */
+  browserRequest?: { url: string; seq: number } | null;
   /** Running background tasks, for the browser's "detect dev server" list. */
   bgTasks?: BgTask[];
   /** The active chat jid — keys the browser state and filters dev servers. */
   activeJid?: string | null;
 }
 
-export function Workbench({ state, expanded, onCollapse, readFile, closeArtifact, selectArtifact, markViewed, dockForm, onResolveForm, browserUrl, bgTasks, activeJid }: Props) {
+export function Workbench({ state, expanded, onCollapse, readFile, closeArtifact, selectArtifact, markViewed, dockForm, onResolveForm, browserRequest, bgTasks, activeJid }: Props) {
   const { token } = theme.useToken();
   const current = state?.current ?? null;
   const history = state?.history ?? [];
-  // The browser shows a user-/dev-server-driven URL, else the current `web`
-  // artifact's URL. `static`/`backend` artifacts render as themselves (below).
+  // The browser shows what a click asked for, else the current `web` artifact's
+  // URL, unless that is a loopback page: one of those waits for the person's
+  // click. `static`/`backend` artifacts render as themselves (below).
+  const artifactUrl = current?.mode === 'web' && current.url ? current.url : null;
+  const localArtifactUrl = artifactUrl && isLoopbackUrl(artifactUrl) ? artifactUrl : null;
   const browserEffectiveUrl =
-    browserUrl ?? (current?.mode === 'web' && current.url ? current.url : null);
+    browserRequest?.url ?? (localArtifactUrl ? null : artifactUrl);
 
   // Notify the backend "viewed" when current changes.
   useEffect(() => {
@@ -202,6 +206,10 @@ export function Workbench({ state, expanded, onCollapse, readFile, closeArtifact
             <BrowserView
               key={activeJid ?? '_'}
               url={browserEffectiveUrl}
+              urlKey={browserRequest?.seq ?? 0}
+              localArtifact={
+                localArtifactUrl ? { title: current?.title ?? '', url: localArtifactUrl } : null
+              }
               bgTasks={bgTasks ?? []}
               activeJid={activeJid ?? null}
             />

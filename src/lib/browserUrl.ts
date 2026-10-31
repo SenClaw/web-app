@@ -28,3 +28,20 @@ export function browserUrlFrom(input: string): string | null {
     return null;
   }
 }
+
+/**
+ * `url` is served from this machine. A page there passes the daemon's
+ * local-Origin check and can read its provider keys, so the Browser pane opens
+ * one only from a person's click. The URL parser has already resolved spellings
+ * such as `127.1` or `2130706433` to `127.0.0.1`.
+ */
+export function isLoopbackUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host === 'localhost' || host === '[::1]' || host === '0.0.0.0' || /^127(\.\d+){3}$/.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
