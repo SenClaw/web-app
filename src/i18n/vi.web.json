@@ -737,5 +737,12 @@
   "App bundle": "Trong bundle ứng dụng",
   "Standalone install": "Cài riêng",
   "This core ships inside SenClaw Desktop and is updated with the app.": "Core này nằm trong SenClaw Desktop và được cập nhật cùng ứng dụng.",
-  "A development build: rebuild it from source to change it.": "Bản build dev: muốn thay thì build lại từ mã nguồn."
+  "A development build: rebuild it from source to change it.": "Bản build dev: muốn thay thì build lại từ mã nguồn.",
+  "Forward": "Tiến",
+  "Home": "Trang chủ",
+  "Type a URL": "Nhập URL",
+  "Browse the web": "Duyệt web",
+  "Type a URL above, or open a running dev server below.": "Nhập URL ở trên, hoặc mở một dev server đang chạy ở dưới.",
+  "Dev servers": "Dev server",
+  "Open port {port} in the browser pane": "Mở cổng {port} trong khung trình duyệt"
 }

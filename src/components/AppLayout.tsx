@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Layout, theme } from 'antd';
 import { Sidebar } from './Sidebar';
 import { AgentConsole } from './AgentConsole';
@@ -6,6 +6,8 @@ import { Workbench } from './Workbench';
 import { DockBadges } from './DockBadges';
 import { ResizeGrips } from './ResizeGrips';
 import { useAppContext } from '../contexts/AppContext';
+import { useBgTasks, portUrl } from '../lib/bgTasks';
+import { subscribeBrowserPane } from '../lib/browserPane';
 import type { WsStatus } from '../types';
 
 interface Props {
@@ -28,6 +30,9 @@ export function AppLayout({ sidebar, children, status }: Props) {
   const [expandedDock, setExpandedDock] = useState<ExpandedDock>(null);
   // After the user manually collapses, suppress this latest's auto-foreground.
   const [suppressedLatestAt, setSuppressedLatestAt] = useState<number | null>(null);
+  // The URL the Browser pane shows (a dev server, a port chip, user nav). Reset
+  // per chat; a `web` artifact drives it in the pane itself.
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
 
   const activeJid = ws.activeJid;
   const workbenchState = activeJid ? (ws.workbench[activeJid] ?? null) : null;
@@ -49,6 +54,55 @@ export function AppLayout({ sidebar, children, status }: Props) {
     if (latest.jid !== activeJid) return;
     setExpandedDock('workbench');
   }, [ws.formDockLatest, activeJid]);
+
+  // ===== Browser pane (right dock) =====
+  // This chat's running dev servers, polled; also feeds the pane's list.
+  const { tasks: bgTasks } = useBgTasks({ chatJid: activeJid ?? undefined });
+
+  // A fresh chat starts the browser blank (a `web` artifact still drives it).
+  useEffect(() => { setBrowserUrl(null); }, [activeJid]);
+
+  // A `:port` chip (or any openInBrowserPane caller) opens here.
+  useEffect(
+    () =>
+      subscribeBrowserPane(url => {
+        setBrowserUrl(url);
+        setExpandedDock('workbench');
+      }),
+    [],
+  );
+
+  // Auto-open: when a NEW dev-server port appears for the active chat, show it.
+  const seenPorts = useRef<{ jid: string | null; ports: Set<number>; primed: boolean }>({
+    jid: null,
+    ports: new Set(),
+    primed: false,
+  });
+  useEffect(() => {
+    const s = seenPorts.current;
+    if (s.jid !== activeJid) {
+      s.jid = activeJid;
+      s.ports = new Set();
+      s.primed = false;
+    }
+    const ports = new Set<number>();
+    for (const task of bgTasks) {
+      if (task.status === 'running' && task.chatJid === activeJid) {
+        for (const p of task.ports) ports.add(p);
+      }
+    }
+    // First poll after a chat opens: remember what's already up, don't hijack.
+    if (!s.primed) {
+      s.ports = ports;
+      s.primed = true;
+      return;
+    }
+    const fresh = [...ports].filter(p => !s.ports.has(p));
+    s.ports = ports;
+    if (fresh.length === 0) return;
+    setBrowserUrl(portUrl(Math.min(...fresh)));
+    setExpandedDock('workbench');
+  }, [bgTasks, activeJid]);
 
   // Workbench callbacks pinned to the active chat jid.
   const { workbenchReadFile, workbenchClose, workbenchMarkViewed, workbenchSetCurrent, workbenchLatest } = ws;
@@ -128,6 +182,9 @@ export function AppLayout({ sidebar, children, status }: Props) {
         markViewed={wbMarkViewed}
         dockForm={dockForm}
         onResolveForm={ws.resolveForm}
+        browserUrl={browserUrl}
+        bgTasks={bgTasks}
+        activeJid={activeJid}
       />
       <DockBadges
         expanded={expandedDock}

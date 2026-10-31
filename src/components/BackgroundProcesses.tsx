@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Empty, Popconfirm, Space, Switch, Tag, Tooltip, Typography, message, theme } from 'antd';
 import {
-  CodeOutlined, DeleteOutlined, LoadingOutlined, LockOutlined, StopOutlined,
+  CodeOutlined, DeleteOutlined, ExportOutlined, LoadingOutlined, LockOutlined, StopOutlined,
 } from '@ant-design/icons';
 
 import { useLang } from '../i18n';
+import { useAppContext } from '../contexts/AppContext';
+import { openInBrowserPane } from '../lib/browserPane';
 import {
   BG_POLL_MS, clearFinishedBgTasks, commandLine, dismissBgTask, fetchBgTaskOutput, fmtUptime,
   portUrl, stopBgTask, useBgTasks,
@@ -86,10 +88,14 @@ export function BgTaskRow({
   task,
   onChanged,
   showChat,
+  onOpenInPane,
 }: {
   task: BgTask;
   onChanged: () => void;
   showChat?: boolean;
+  /** When set (chat strip only), a `:port` chip opens in the Browser pane; a
+   * small icon beside it still opens the system browser. */
+  onOpenInPane?: (port: number) => void;
 }) {
   const { token } = theme.useToken();
   const { t, tArgs } = useLang();
@@ -153,15 +159,36 @@ export function BgTaskRow({
         )}
         {running &&
           task.ports.map(p => (
-            <Tooltip key={p} title={tArgs('Open port {port} in a new tab', { port: p })}>
-              <Tag
-                color="blue"
-                style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                onClick={() => window.open(portUrl(p), '_blank', 'noopener')}
+            <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+              <Tooltip
+                title={
+                  onOpenInPane
+                    ? tArgs('Open port {port} in the browser pane', { port: p })
+                    : tArgs('Open port {port} in a new tab', { port: p })
+                }
               >
-                :{p}
-              </Tag>
-            </Tooltip>
+                <Tag
+                  color="blue"
+                  style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                  onClick={() =>
+                    onOpenInPane ? onOpenInPane(p) : window.open(portUrl(p), '_blank', 'noopener')
+                  }
+                >
+                  :{p}
+                </Tag>
+              </Tooltip>
+              {onOpenInPane && (
+                <Tooltip title={t('Open externally')}>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<ExportOutlined />}
+                    onClick={() => window.open(portUrl(p), '_blank', 'noopener')}
+                    style={{ width: 20, height: 20, minWidth: 20, padding: 0 }}
+                  />
+                </Tooltip>
+              )}
+            </span>
           ))}
         {!running && <Tag color={STATUS_COLOR[task.status]} style={{ marginInlineEnd: 0 }}>{t(STATUS_LABEL[task.status])}</Tag>}
         <Button size="small" type="text" onClick={() => setOpen(o => !o)} style={{ fontSize: 11 }}>
@@ -207,15 +234,20 @@ export function BgTaskRow({
 export function BackgroundProcessStrip({ jid }: { jid: string }) {
   const { t, tArgs } = useLang();
   const navigate = useNavigate();
+  const { embed } = useAppContext();
   const { tasks, reload } = useBgTasks();
   const mine = tasks.filter(x => x.chatJid === jid);
   const others = tasks.length - mine.length;
   if (mine.length === 0 && others === 0) return null;
 
+  // Open a port in the right-dock Browser pane — only where that dock exists
+  // (not the compact ?embed=1 chat window, which has no dock).
+  const onOpenInPane = embed ? undefined : (port: number) => openInBrowserPane(portUrl(port));
+
   return (
     <div style={{ padding: '0 24px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
       {mine.map(task => (
-        <BgTaskRow key={task.id} task={task} onChanged={() => void reload()} />
+        <BgTaskRow key={task.id} task={task} onChanged={() => void reload()} onOpenInPane={onOpenInPane} />
       ))}
       {others > 0 && (
         <Text type="secondary" style={{ fontSize: 11 }}>

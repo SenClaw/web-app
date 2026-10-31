@@ -55,8 +55,8 @@ export function DockBadges(p: Props) {
       <BadgeButton
         active={p.expanded === 'workbench'}
         onClick={() => p.onToggle('workbench')}
-        title="Workbench"
-        icon={<MonitorIcon />}
+        title="Browser"
+        icon={<GlobeIcon />}
         countBadge={null}
         dot={wbCurrent ? 'info' : wbHasRunning ? 'live' : null}
         token={token}
@@ -117,7 +117,7 @@ function GearIcon() {
   return <span className="text-base leading-none select-none">⚙</span>;
 }
 
-function MonitorIcon() {
+function GlobeIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -130,9 +130,9 @@ function MonitorIcon() {
       strokeLinejoin="round"
       aria-hidden
     >
-      <rect x="3" y="4" width="18" height="13" rx="1.2" />
-      <path d="M9 21h6" />
-      <path d="M12 17v4" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18" />
     </svg>
   );
 }
