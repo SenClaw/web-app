@@ -105,6 +105,10 @@ export function SpaceAppFrame({ app }: Props) {
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
+      // Only this app's own frame may use the bridge. Any other frame on the
+      // page, such as a site in the Browser pane, can post here too, and the
+      // bridge runs agents with the console's authority.
+      if (event.source !== iframeRef.current?.contentWindow) return;
       const data = event.data;
       if (data?.type === 'senclaw:ready') {
         sendInit();

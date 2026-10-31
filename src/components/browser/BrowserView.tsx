@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Tooltip, theme } from 'antd';
+import { Button, Input, Tooltip, message, theme } from 'antd';
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
@@ -12,6 +12,7 @@ import {
 
 import { useLang } from '../../i18n';
 import { portUrl, type BgTask } from '../../lib/bgTasks';
+import { browserUrlFrom } from '../../lib/browserUrl';
 
 interface Props {
   /** URL requested from outside the pane (a web artifact, a dev server, a port
@@ -19,15 +20,6 @@ interface Props {
   url: string | null;
   bgTasks: BgTask[];
   activeJid: string | null;
-}
-
-/** Turn what the user typed into a loadable URL: a bare `localhost:3000` gets
- * `http://`, anything else without a scheme gets `https://`. */
-function normalize(input: string): string {
-  const s = input.trim();
-  if (!s || s.includes('://')) return s;
-  const local = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(s);
-  return `${local ? 'http' : 'https'}://${s}`;
 }
 
 /**
@@ -41,21 +33,29 @@ export function BrowserView({ url, bgTasks, activeJid }: Props) {
   const { token } = theme.useToken();
   const { t } = useLang();
 
-  const [nav, setNav] = useState<{ stack: string[]; idx: number }>(
-    () => (url ? { stack: [url], idx: 0 } : { stack: [], idx: -1 }),
-  );
+  const [nav, setNav] = useState<{ stack: string[]; idx: number }>(() => {
+    const first = url ? browserUrlFrom(url) : null;
+    return first ? { stack: [first], idx: 0 } : { stack: [], idx: -1 };
+  });
   const [input, setInput] = useState(url ?? '');
   const [reloadKey, setReloadKey] = useState(0);
   const current = nav.idx >= 0 ? nav.stack[nav.idx] : null;
 
-  const go = useCallback((u: string) => {
+  // Every URL enters the pane here, whoever asked for it.
+  const go = useCallback((raw: string) => {
+    if (!raw.trim()) return;
+    const u = browserUrlFrom(raw);
+    if (!u) {
+      message.warning(t('Only http and https pages open here.'));
+      return;
+    }
     setNav(n => {
       const stack = n.stack.slice(0, n.idx + 1);
       stack.push(u);
       return { stack, idx: stack.length - 1 };
     });
     setInput(u);
-  }, []);
+  }, [t]);
 
   // React only to a NEW url *prop* (external open). Internal navigation leaves
   // the prop unchanged, so this never fights the address bar or back/forward.
@@ -75,7 +75,7 @@ export function BrowserView({ url, bgTasks, activeJid }: Props) {
   const canForward = nav.idx < nav.stack.length - 1;
 
   const openExternal = () => {
-    const u = current ?? normalize(input);
+    const u = current ?? browserUrlFrom(input);
     if (u) window.open(u, '_blank', 'noopener');
   };
 
@@ -126,10 +126,7 @@ export function BrowserView({ url, bgTasks, activeJid }: Props) {
           size="small"
           value={input}
           onChange={e => setInput(e.target.value)}
-          onPressEnter={() => {
-            const u = normalize(input);
-            if (u) go(u);
-          }}
+          onPressEnter={() => go(input)}
           placeholder={t('Type a URL')}
           style={{ fontFamily: 'monospace', fontSize: 12 }}
         />

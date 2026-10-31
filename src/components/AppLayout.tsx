@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Layout, theme } from 'antd';
 import { Sidebar } from './Sidebar';
 import { AgentConsole } from './AgentConsole';
@@ -6,7 +6,7 @@ import { Workbench } from './Workbench';
 import { DockBadges } from './DockBadges';
 import { ResizeGrips } from './ResizeGrips';
 import { useAppContext } from '../contexts/AppContext';
-import { useBgTasks, portUrl } from '../lib/bgTasks';
+import { useBgTasks } from '../lib/bgTasks';
 import { subscribeBrowserPane } from '../lib/browserPane';
 import type { WsStatus } from '../types';
 
@@ -56,7 +56,8 @@ export function AppLayout({ sidebar, children, status }: Props) {
   }, [ws.formDockLatest, activeJid]);
 
   // ===== Browser pane (right dock) =====
-  // This chat's running dev servers, polled; also feeds the pane's list.
+  // This chat's running dev servers, polled for the pane's list. A server opens
+  // only from a click: a page on a loopback port gets the daemon's trust.
   const { tasks: bgTasks } = useBgTasks({ chatJid: activeJid ?? undefined });
 
   // A fresh chat starts the browser blank (a `web` artifact still drives it).
@@ -71,38 +72,6 @@ export function AppLayout({ sidebar, children, status }: Props) {
       }),
     [],
   );
-
-  // Auto-open: when a NEW dev-server port appears for the active chat, show it.
-  const seenPorts = useRef<{ jid: string | null; ports: Set<number>; primed: boolean }>({
-    jid: null,
-    ports: new Set(),
-    primed: false,
-  });
-  useEffect(() => {
-    const s = seenPorts.current;
-    if (s.jid !== activeJid) {
-      s.jid = activeJid;
-      s.ports = new Set();
-      s.primed = false;
-    }
-    const ports = new Set<number>();
-    for (const task of bgTasks) {
-      if (task.status === 'running' && task.chatJid === activeJid) {
-        for (const p of task.ports) ports.add(p);
-      }
-    }
-    // First poll after a chat opens: remember what's already up, don't hijack.
-    if (!s.primed) {
-      s.ports = ports;
-      s.primed = true;
-      return;
-    }
-    const fresh = [...ports].filter(p => !s.ports.has(p));
-    s.ports = ports;
-    if (fresh.length === 0) return;
-    setBrowserUrl(portUrl(Math.min(...fresh)));
-    setExpandedDock('workbench');
-  }, [bgTasks, activeJid]);
 
   // Workbench callbacks pinned to the active chat jid.
   const { workbenchReadFile, workbenchClose, workbenchMarkViewed, workbenchSetCurrent, workbenchLatest } = ws;
