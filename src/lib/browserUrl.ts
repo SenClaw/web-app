@@ -37,7 +37,8 @@ export function browserUrlFrom(input: string): string | null {
  */
 export function isLoopbackUrl(url: string): boolean {
   try {
-    const host = new URL(url).hostname.toLowerCase();
+    // As the pane would load it: a bare `localhost:5173` has no host until then.
+    const host = new URL(browserUrlFrom(url) ?? url).hostname.toLowerCase();
     return (
       host === 'localhost' || host === '[::1]' || host === '0.0.0.0' || /^127(\.\d+){3}$/.test(host)
     );

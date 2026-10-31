@@ -30,11 +30,11 @@ export function AppLayout({ sidebar, children, status }: Props) {
   const [expandedDock, setExpandedDock] = useState<ExpandedDock>(null);
   // After the user manually collapses, suppress this latest's auto-foreground.
   const [suppressedLatestAt, setSuppressedLatestAt] = useState<number | null>(null);
-  // What the Browser pane was last asked to open (a port chip). `seq` makes a
-  // second click on the same chip count. Reset per chat; a remote `web` artifact
-  // drives the pane itself.
+  // What the Browser pane was last asked to open (a port chip), and for which
+  // chat: a click belongs to the chat it was made in. `seq` makes a second click
+  // on the same chip count. A remote `web` artifact drives the pane itself.
   const [browserRequest, setBrowserRequest] =
-    useState<{ url: string; seq: number } | null>(null);
+    useState<{ jid: string | null; url: string; seq: number } | null>(null);
 
   const activeJid = ws.activeJid;
   const workbenchState = activeJid ? (ws.workbench[activeJid] ?? null) : null;
@@ -62,17 +62,14 @@ export function AppLayout({ sidebar, children, status }: Props) {
   // only from a click: a page on a loopback port gets the daemon's trust.
   const { tasks: bgTasks } = useBgTasks({ chatJid: activeJid ?? undefined });
 
-  // A fresh chat starts the browser blank (a `web` artifact still drives it).
-  useEffect(() => { setBrowserRequest(null); }, [activeJid]);
-
   // A `:port` chip (or any openInBrowserPane caller) opens here.
   useEffect(
     () =>
       subscribeBrowserPane(url => {
-        setBrowserRequest(r => ({ url, seq: (r?.seq ?? 0) + 1 }));
+        setBrowserRequest(r => ({ jid: activeJid, url, seq: (r?.seq ?? 0) + 1 }));
         setExpandedDock('workbench');
       }),
-    [],
+    [activeJid],
   );
 
   // Workbench callbacks pinned to the active chat jid.
@@ -153,7 +150,7 @@ export function AppLayout({ sidebar, children, status }: Props) {
         markViewed={wbMarkViewed}
         dockForm={dockForm}
         onResolveForm={ws.resolveForm}
-        browserRequest={browserRequest}
+        browserRequest={browserRequest?.jid === activeJid ? browserRequest : null}
         bgTasks={bgTasks}
         activeJid={activeJid}
       />
